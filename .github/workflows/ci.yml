@@ -29,18 +29,20 @@ jobs:
       - name: Verify Zig installation
         run: zig version
       
-      - name: Clear Zig cache and fetch dependencies
+      - name: Clear Zig cache and regenerate dependency hash
         run: |
-          echo "Clearing Zig cache and fetching dependencies..."
+          echo "Clearing Zig cache and regenerating dependency hash..."
           # Clear all possible cache locations
           rm -rf ~/.cache/zig
           rm -rf .zig-cache
           rm -rf /tmp/zig-*
-          # Force fetch with explicit name
+          # Remove old dependency from build.zig.zon temporarily
+          sed -i '/zig_poseidon/,/}/d' build.zig.zon
+          # Add dependency back with fresh fetch
           zig fetch --save=zig_poseidon https://github.com/blockblaz/zig-poseidon/archive/main.tar.gz
           # Verify the dependency was fetched
           ls -la ~/.cache/zig/p/ || echo "No cache directory found"
-          echo "Dependencies fetched successfully"
+          echo "Dependencies fetched successfully with fresh hash"
       
       - name: Run lint (zig fmt --check)
         run: zig build lint
@@ -138,18 +140,20 @@ jobs:
         with:
           version: 0.14.1
       
-      - name: Clear Zig cache and fetch dependencies
+      - name: Clear Zig cache and regenerate dependency hash
         run: |
-          echo "Clearing Zig cache and fetching dependencies..."
+          echo "Clearing Zig cache and regenerating dependency hash..."
           # Clear all possible cache locations
           rm -rf ~/.cache/zig
           rm -rf .zig-cache
           rm -rf /tmp/zig-*
-          # Force fetch with explicit name
+          # Remove old dependency from build.zig.zon temporarily
+          sed -i '/zig_poseidon/,/}/d' build.zig.zon
+          # Add dependency back with fresh fetch
           zig fetch --save=zig_poseidon https://github.com/blockblaz/zig-poseidon/archive/main.tar.gz
           # Verify the dependency was fetched
           ls -la ~/.cache/zig/p/ || echo "No cache directory found"
-          echo "Dependencies fetched successfully"
+          echo "Dependencies fetched successfully with fresh hash"
       
       - name: Build library (verify cross-platform compilation)
         run: zig build
@@ -169,18 +173,20 @@ jobs:
         with:
           version: 0.14.1
       
-      - name: Clear Zig cache and fetch dependencies
+      - name: Clear Zig cache and regenerate dependency hash
         run: |
-          echo "Clearing Zig cache and fetching dependencies..."
+          echo "Clearing Zig cache and regenerating dependency hash..."
           # Clear all possible cache locations
           rm -rf ~/.cache/zig
           rm -rf .zig-cache
           rm -rf /tmp/zig-*
-          # Force fetch with explicit name
+          # Remove old dependency from build.zig.zon temporarily
+          sed -i '/zig_poseidon/,/}/d' build.zig.zon
+          # Add dependency back with fresh fetch
           zig fetch --save=zig_poseidon https://github.com/blockblaz/zig-poseidon/archive/main.tar.gz
           # Verify the dependency was fetched
           ls -la ~/.cache/zig/p/ || echo "No cache directory found"
-          echo "Dependencies fetched successfully"
+          echo "Dependencies fetched successfully with fresh hash"
       
       - name: Build library
         run: zig build
