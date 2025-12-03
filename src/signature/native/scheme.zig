@@ -296,10 +296,22 @@ fn deserializePaddedLayer(allocator: std.mem.Allocator, serialized: []const u8) 
     errdefer allocator.free(nodes);
 
     // Deserialize nodes
+    // CRITICAL: Leansig stores field elements in SSZ as Montgomery form, NOT canonical!
+    // This is different from how we encode (we use canonical), but we must match leansig's format
     for (0..num_nodes) |i| {
         for (0..8) |j| {
             const val = std.mem.readInt(u32, nodes_data[i * 32 + j * 4 .. i * 32 + j * 4 + 4][0..4], .little);
-            nodes[i][j] = FieldElement.fromCanonical(val);
+            // Leansig stores as Montgomery values directly, so use fromMontgomery
+            nodes[i][j] = FieldElement.fromMontgomery(val);
+
+            if (i == num_nodes - 1 and j == 0) {
+                // Debug last node first element (the root)
+                std.debug.print("TREE_SSZ_DECODE: Last layer last node first element: raw_u32=0x{x:0>8}, as_montgomery=0x{x:0>8}, as_canonical=0x{x:0>8}\n", .{
+                    val,
+                    nodes[i][j].value,
+                    nodes[i][j].toCanonical(),
+                });
+            }
         }
     }
 
@@ -1162,8 +1174,14 @@ pub const GeneralizedXMSSPublicKey = struct {
         var root_offset: usize = 0;
         for (0..hash_len) |i| {
             if (serialized.len < root_offset + 4) return error.InvalidLength;
-            var val: u32 = undefined;
-            try ssz.deserialize(u32, serialized[root_offset .. root_offset + 4], &val, null);
+            // Direct little-endian read instead of ssz.deserialize which may have issues
+            const bytes = serialized[root_offset .. root_offset + 4];
+            const val = std.mem.readInt(u32, bytes[0..4], .little);
+            if (i == 0) {
+                std.debug.print("PK_SSZ_DECODE: First 4 bytes: {x:0>2}{x:0>2}{x:0>2}{x:0>2} -> u32=0x{x:0>8}\n", .{
+                    bytes[0], bytes[1], bytes[2], bytes[3], val,
+                });
+            }
             root_canonical[i] = val;
             root_offset += 4;
         }
