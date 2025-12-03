@@ -126,8 +126,17 @@ def parse_args() -> argparse.Namespace:
 def build_scenarios(lifetimes: list[str], seed_hex: str) -> list[ScenarioConfig]:
     scenarios: list[ScenarioConfig] = []
     for lifetime in lifetimes:
-        # Use 1024 active epochs for 2^32 lifetime, 256 for others
-        num_active_epochs = 1024 if lifetime == "2^32" else 256
+        # Use appropriate active epochs for each lifetime
+        # Note: Zig/Rust multiply by 128 internally, so actual = input * 128
+        # 2^8: max 256 signatures, so max input = 256/128 = 2
+        # 2^18: max 262,144 signatures, so we can use 256 (256*128=32,768)
+        # 2^32: max 4B+ signatures, so we can use 1024 (1024*128=131,072)
+        if lifetime == "2^32":
+            num_active_epochs = 1024
+        elif lifetime == "2^18":
+            num_active_epochs = 256
+        else:  # 2^8
+            num_active_epochs = 2
         scenarios.append(
             ScenarioConfig(
                 lifetime=lifetime,
@@ -262,6 +271,8 @@ def run_rust_sign(cfg: ScenarioConfig, paths: Dict[str, Path]) -> OperationResul
     tmp_dir.mkdir(exist_ok=True)
     
     # Save active epochs to file for the tool to read
+    # Note: Rust leansig multiplies by 128 internally, Zig now does the same
+    # So we pass the same value to both
     (tmp_dir / "rust_active_epochs.txt").write_text(str(cfg.num_active_epochs))
     
     # Generate keypair first
@@ -416,6 +427,68 @@ def run_rust_verify(
     return OperationResult(success, duration, result.stdout, result.stderr)
 
 
+def compare_file_sizes(cfg: ScenarioConfig, paths: Dict[str, Path]) -> bool:
+    """Compare file sizes between Rust and Zig generated files"""
+    print(f"\n-- Comparing file sizes --")
+    
+    discrepancies = []
+    
+    # Compare public keys
+    rust_pk_size = paths["rust_pk"].stat().st_size if paths["rust_pk"].exists() else 0
+    zig_pk_size = paths["zig_pk"].stat().st_size if paths["zig_pk"].exists() else 0
+    
+    print(f"Public key sizes:")
+    print(f"  Rust: {rust_pk_size} bytes")
+    print(f"  Zig:  {zig_pk_size} bytes")
+    
+    if rust_pk_size != zig_pk_size:
+        discrepancies.append(f"Public key size mismatch: Rust={rust_pk_size} vs Zig={zig_pk_size}")
+        print(f"  ⚠️  WARNING: Public key sizes differ!")
+    else:
+        print(f"  ✅ Public key sizes match")
+    
+    # Compare signatures
+    rust_sig_size = paths["rust_sig"].stat().st_size if paths["rust_sig"].exists() else 0
+    zig_sig_size = paths["zig_sig"].stat().st_size if paths["zig_sig"].exists() else 0
+    
+    print(f"Signature sizes:")
+    print(f"  Rust: {rust_sig_size} bytes")
+    print(f"  Zig:  {zig_sig_size} bytes")
+    
+    if rust_sig_size != zig_sig_size:
+        discrepancies.append(f"Signature size mismatch: Rust={rust_sig_size} vs Zig={zig_sig_size}")
+        print(f"  ⚠️  WARNING: Signature sizes differ!")
+    else:
+        print(f"  ✅ Signature sizes match")
+    
+    # Compare secret keys (check both project tmp and rust_benchmark tmp)
+    rust_sk_path = REPO_ROOT / "benchmark" / "rust_benchmark" / "tmp" / "rust_sk.ssz"
+    zig_sk_path = REPO_ROOT / "tmp" / "zig_sk.ssz"
+    
+    if rust_sk_path.exists() and zig_sk_path.exists():
+        rust_sk_size = rust_sk_path.stat().st_size
+        zig_sk_size = zig_sk_path.stat().st_size
+        
+        print(f"Secret key sizes:")
+        print(f"  Rust: {rust_sk_size:,} bytes")
+        print(f"  Zig:  {zig_sk_size:,} bytes")
+        
+        if rust_sk_size != zig_sk_size:
+            discrepancies.append(f"Secret key size mismatch: Rust={rust_sk_size:,} vs Zig={zig_sk_size:,}")
+            print(f"  ⚠️  WARNING: Secret key sizes differ!")
+            print(f"           This indicates incompatible SSZ serialization formats!")
+            print(f"           Rust includes full trees, Zig may only save metadata.")
+        else:
+            print(f"  ✅ Secret key sizes match")
+    
+    if discrepancies:
+        print(f"\n⚠️  {len(discrepancies)} size discrepanc{'y' if len(discrepancies) == 1 else 'ies'} detected:")
+        for disc in discrepancies:
+            print(f"     - {disc}")
+        return False
+    
+    return True
+
 def run_scenario(cfg: ScenarioConfig, timeout_2_32: int) -> tuple[Dict[str, OperationResult], Dict[str, Path]]:
     print(f"\n=== Scenario: {cfg.label} ===")
     paths = scenario_paths(cfg)
@@ -437,6 +510,11 @@ def run_scenario(cfg: ScenarioConfig, timeout_2_32: int) -> tuple[Dict[str, Oper
     # This exercises full cross-language compatibility: Zig-generated public key and
     # signature must be accepted by the Rust verifier.
     results["zig_to_rust"] = run_rust_verify(cfg, paths["zig_pk"], paths["zig_sig"], "Zig sign → Rust verify")
+
+    # Compare file sizes to detect serialization format mismatches
+    sizes_match = compare_file_sizes(cfg, paths)
+    if not sizes_match:
+        print("\n⚠️  WARNING: File size mismatches detected. This may indicate serialization format issues.")
 
     return results, paths
 

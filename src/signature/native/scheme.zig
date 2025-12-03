@@ -167,6 +167,7 @@ pub const HashSubTree = struct {
     root_value: [8]FieldElement,
     layers: ?[]PaddedLayer,
     allocator: std.mem.Allocator,
+    depth: usize, // The tree depth (log_lifetime for full trees, log_lifetime/2 for bottom trees)
 
     pub fn init(allocator: std.mem.Allocator, root_value: [8]FieldElement) !*HashSubTree {
         const self = try allocator.create(HashSubTree);
@@ -174,6 +175,7 @@ pub const HashSubTree = struct {
             .root_value = root_value,
             .layers = null,
             .allocator = allocator,
+            .depth = 0, // Default depth for trees without layers
         };
         return self;
     }
@@ -182,12 +184,14 @@ pub const HashSubTree = struct {
         allocator: std.mem.Allocator,
         root_value: [8]FieldElement,
         layers: []PaddedLayer,
+        depth: usize,
     ) !*HashSubTree {
         const self = try allocator.create(HashSubTree);
         self.* = HashSubTree{
             .root_value = root_value,
             .layers = layers,
             .allocator = allocator,
+            .depth = depth,
         };
         return self;
     }
@@ -215,6 +219,92 @@ pub const HashSubTree = struct {
 };
 
 /// Helper function to deserialize HashSubTree from leansig SSZ format
+/// Serialize HashSubTree to SSZ format (matching Rust leansig)
+fn serializeHashSubTree(tree: *const HashSubTree, l: *std.ArrayList(u8)) !void {
+    // Format: [depth:8][lowest_layer:8][layers_offset:4][layers_data]
+    const layers = tree.getLayers() orelse return error.NoLayers;
+
+    // Write depth (u64) - Rust stores the tree depth (log_lifetime), not layers.len
+    try ssz.serialize(u64, @as(u64, @intCast(tree.depth)), l);
+
+    // Write lowest_layer (u64) - always 0 for our trees
+    try ssz.serialize(u64, @as(u64, 0), l);
+
+    // Write layers_offset (u32) - points to start of layers array
+    const layers_offset: u32 = 20; // 8 + 8 + 4 = 20
+    try ssz.serialize(u32, layers_offset, l);
+
+    // Now serialize layers array
+    // First, serialize all layers to get their sizes
+    var layer_bytes_list = try tree.allocator.alloc(std.ArrayList(u8), layers.len);
+    defer {
+        for (layer_bytes_list) |*lb| {
+            lb.deinit();
+        }
+        tree.allocator.free(layer_bytes_list);
+    }
+
+    for (layers, 0..) |layer, i| {
+        layer_bytes_list[i] = std.ArrayList(u8).init(tree.allocator);
+        // Check if this is a padded single-node root layer:
+        // - It's the last layer
+        // - It has exactly 2 nodes
+        // - The layer 2 levels down (i-2) has MORE than 2 nodes (indicating natural convergence to 1 root)
+        // For top tree: layer i-2 has 2 nodes → layer i has 2 real nodes (no padding skip)
+        // For bottom tree: layer i-2 has 4+ nodes → layer i has 1 real node + padding (skip padding)
+        const is_padded_single_root = if (i == layers.len - 1 and layer.nodes.len == 2 and i >= 2) blk: {
+            const two_below = layers[i - 2];
+            break :blk two_below.nodes.len > 2; // More than 2 nodes → converges to 1 → padded
+        } else false;
+        try serializePaddedLayer(&layer, &layer_bytes_list[i], is_padded_single_root);
+    }
+
+    // Write layer offsets (relative to start of layers array)
+    var current_offset: u32 = @as(u32, @intCast(layers.len * 4)); // Space for offsets
+    for (layer_bytes_list) |*lb| {
+        try ssz.serialize(u32, current_offset, l);
+        current_offset += @as(u32, @intCast(lb.items.len));
+    }
+
+    // Write layer data
+    for (layer_bytes_list) |*lb| {
+        try l.appendSlice(lb.items);
+    }
+}
+
+/// Serialize PaddedLayer to SSZ format (matching Rust leansig)
+fn serializePaddedLayer(layer: *const PaddedLayer, l: *std.ArrayList(u8), skip_padding: bool) !void {
+    // Format: [start_index:8][nodes_offset:4][nodes_data]
+
+    // Write start_index (u64)
+    try ssz.serialize(u64, @as(u64, @intCast(layer.start_index)), l);
+
+    // Write nodes_offset (u32) - points to start of nodes array
+    const nodes_offset: u32 = 12; // 8 + 4 = 12
+    try ssz.serialize(u32, nodes_offset, l);
+
+    // CRITICAL: For padded single-node roots, Rust only serializes the real node (not padding)
+    // - If start_index is even (0), padding is at the back: serialize nodes[0]
+    // - If start_index is odd (1), padding is at the front: serialize nodes[1]
+    const nodes_to_serialize = if (skip_padding) blk: {
+        if ((layer.start_index & 1) == 0) {
+            // Even start_index: real node is first, padding is last
+            break :blk layer.nodes[0..1];
+        } else {
+            // Odd start_index: padding is first, real node is last
+            break :blk layer.nodes[1..2];
+        }
+    } else layer.nodes;
+
+    // Write nodes as raw field element arrays (no length prefix, Vec<[FE; 8]> in Rust)
+    for (nodes_to_serialize) |node| {
+        // Each node is [8]FieldElement, serialize as 8 u32s in canonical form
+        for (node) |fe| {
+            try ssz.serialize(u32, fe.toCanonical(), l);
+        }
+    }
+}
+
 fn deserializeHashSubTree(allocator: std.mem.Allocator, serialized: []const u8) !*HashSubTree {
     if (serialized.len < 20) return error.InvalidLength;
 
@@ -228,7 +318,6 @@ fn deserializeHashSubTree(allocator: std.mem.Allocator, serialized: []const u8) 
     const lowest_layer = std.mem.readInt(u64, serialized[offset .. offset + 8][0..8], .little);
     offset += 8;
     _ = lowest_layer;
-    _ = depth;
 
     // Decode layers_offset (u32)
     const layers_offset = std.mem.readInt(u32, serialized[offset .. offset + 4][0..4], .little);
@@ -268,13 +357,14 @@ fn deserializeHashSubTree(allocator: std.mem.Allocator, serialized: []const u8) 
         layers[i] = try deserializePaddedLayer(allocator, layer_bytes);
     }
 
-    // Extract root from the last layer's last node
-    const root_value = if (layers.len > 0 and layers[layers.len - 1].nodes.len > 0)
-        layers[layers.len - 1].nodes[layers[layers.len - 1].nodes.len - 1]
-    else
-        [_]FieldElement{FieldElement{ .value = 0 }} ** 8;
+    // Extract root from the last layer's FIRST node (not last!)
+    // In leansig's tree structure, the root is stored as the first node of the last layer
+    const root_value = if (layers.len > 0 and layers[layers.len - 1].nodes.len > 0) blk: {
+        const root_node = layers[layers.len - 1].nodes[0]; // FIRST node, not last!
+        break :blk root_node;
+    } else [_]FieldElement{FieldElement{ .value = 0 }} ** 8;
 
-    return try HashSubTree.initWithLayers(allocator, root_value, layers);
+    return try HashSubTree.initWithLayers(allocator, root_value, layers, @intCast(depth));
 }
 
 /// Helper function to deserialize PaddedLayer from leansig SSZ format
@@ -296,22 +386,23 @@ fn deserializePaddedLayer(allocator: std.mem.Allocator, serialized: []const u8) 
     errdefer allocator.free(nodes);
 
     // Deserialize nodes
-    // CRITICAL: Leansig stores field elements in SSZ as Montgomery form, NOT canonical!
-    // This is different from how we encode (we use canonical), but we must match leansig's format
+    // Leansig stores field elements in SSZ as CANONICAL form (confirmed by inspecting bytes)
     for (0..num_nodes) |i| {
         for (0..8) |j| {
             const val = std.mem.readInt(u32, nodes_data[i * 32 + j * 4 .. i * 32 + j * 4 + 4][0..4], .little);
-            // Leansig stores as Montgomery values directly, so use fromMontgomery
-            nodes[i][j] = FieldElement.fromMontgomery(val);
+            nodes[i][j] = FieldElement.fromCanonical(val);
+        }
+    }
 
-            if (i == num_nodes - 1 and j == 0) {
-                // Debug last node first element (the root)
-                std.debug.print("TREE_SSZ_DECODE: Last layer last node first element: raw_u32=0x{x:0>8}, as_montgomery=0x{x:0>8}, as_canonical=0x{x:0>8}\n", .{
-                    val,
-                    nodes[i][j].value,
-                    nodes[i][j].toCanonical(),
-                });
-            }
+    // Verify first node canonical matches raw value
+    if (num_nodes > 0) {
+        const first_node_raw = std.mem.readInt(u32, nodes_data[0..4], .little);
+        const first_node_canonical = nodes[0][0].toCanonical();
+        if (first_node_raw != first_node_canonical) {
+            std.debug.print("TREE_DECODE_ERROR: First node mismatch! raw=0x{x:0>8}, canonical=0x{x:0>8}\n", .{
+                first_node_raw,
+                first_node_canonical,
+            });
         }
     }
 
@@ -509,7 +600,8 @@ const BottomTreeCache = struct {
             };
         }
 
-        return try HashSubTree.initWithLayers(allocator, root_value, layers);
+        // Cache doesn't store depth, so we use 0 as a placeholder
+        return try HashSubTree.initWithLayers(allocator, root_value, layers, 0);
     }
 
     pub fn store(
@@ -1177,11 +1269,6 @@ pub const GeneralizedXMSSPublicKey = struct {
             // Direct little-endian read instead of ssz.deserialize which may have issues
             const bytes = serialized[root_offset .. root_offset + 4];
             const val = std.mem.readInt(u32, bytes[0..4], .little);
-            if (i == 0) {
-                std.debug.print("PK_SSZ_DECODE: First 4 bytes: {x:0>2}{x:0>2}{x:0>2}{x:0>2} -> u32=0x{x:0>8}\n", .{
-                    bytes[0], bytes[1], bytes[2], bytes[3], val,
-                });
-            }
             root_canonical[i] = val;
             root_offset += 4;
         }
@@ -1328,10 +1415,12 @@ pub const GeneralizedXMSSSecretKey = struct {
 
     // SSZ serialization methods
     pub fn sszEncode(self: *const GeneralizedXMSSSecretKey, l: *std.ArrayList(u8)) !void {
-        // Note: This is a simplified encoding that doesn't include trees (for compatibility with existing code)
-        // For full leansig-compatible encoding with trees, use a separate method
+        // Full leansig-compatible encoding with trees
+        // Format: [prf_key:32][parameter:20][activation_epoch:8][num_active_epochs:8]
+        //         [top_tree_offset:4][left_bottom_tree_index:8][left_bottom_tree_offset:4][right_bottom_tree_offset:4]
+        //         [top_tree_data][left_bottom_tree_data][right_bottom_tree_data]
 
-        // Encode prf_key (32 bytes, fixed-size)
+        // Encode fixed-size fields
         try ssz.serialize([32]u8, self.prf_key, l);
 
         // Convert parameter to canonical u32 array and serialize (20 bytes for 5 u32s)
@@ -1346,6 +1435,40 @@ pub const GeneralizedXMSSSecretKey = struct {
 
         // Encode num_active_epochs as u64 (8 bytes)
         try ssz.serialize(u64, @as(u64, @intCast(self.num_active_epochs)), l);
+
+        // Now we're at offset 68 (32+20+8+8)
+        // Encode offsets for variable-size fields
+        const fixed_part_end: u32 = 88; // 68 + 4 + 8 + 4 + 4 = 88
+
+        // Serialize top_tree to get its size
+        var top_tree_bytes = std.ArrayList(u8).init(self.allocator);
+        defer top_tree_bytes.deinit();
+        try serializeHashSubTree(self.top_tree, &top_tree_bytes);
+
+        // Serialize left_bottom_tree to get its size
+        var left_bottom_tree_bytes = std.ArrayList(u8).init(self.allocator);
+        defer left_bottom_tree_bytes.deinit();
+        try serializeHashSubTree(self.left_bottom_tree, &left_bottom_tree_bytes);
+
+        // Serialize right_bottom_tree to get its size
+        var right_bottom_tree_bytes = std.ArrayList(u8).init(self.allocator);
+        defer right_bottom_tree_bytes.deinit();
+        try serializeHashSubTree(self.right_bottom_tree, &right_bottom_tree_bytes);
+
+        // Write offsets
+        const top_tree_offset = fixed_part_end;
+        const left_bottom_tree_offset = top_tree_offset + @as(u32, @intCast(top_tree_bytes.items.len));
+        const right_bottom_tree_offset = left_bottom_tree_offset + @as(u32, @intCast(left_bottom_tree_bytes.items.len));
+
+        try ssz.serialize(u32, top_tree_offset, l);
+        try ssz.serialize(u64, @as(u64, @intCast(self.left_bottom_tree_index)), l);
+        try ssz.serialize(u32, left_bottom_tree_offset, l);
+        try ssz.serialize(u32, right_bottom_tree_offset, l);
+
+        // Write tree data
+        try l.appendSlice(top_tree_bytes.items);
+        try l.appendSlice(left_bottom_tree_bytes.items);
+        try l.appendSlice(right_bottom_tree_bytes.items);
     }
 
     pub fn sszDecode(serialized: []const u8, out: *GeneralizedXMSSSecretKey, allocator: ?std.mem.Allocator) !void {
@@ -1397,12 +1520,21 @@ pub const GeneralizedXMSSSecretKey = struct {
 
         // Deserialize top_tree
         const top_tree = try deserializeHashSubTree(alloc, serialized[top_tree_offset..left_bottom_tree_offset]);
+        errdefer top_tree.deinit();
 
         // Deserialize left_bottom_tree
-        const left_bottom_tree = try deserializeHashSubTree(alloc, serialized[left_bottom_tree_offset..right_bottom_tree_offset]);
+        const left_bottom_tree = deserializeHashSubTree(alloc, serialized[left_bottom_tree_offset..right_bottom_tree_offset]) catch |err| {
+            top_tree.deinit();
+            return err;
+        };
+        errdefer left_bottom_tree.deinit();
 
         // Deserialize right_bottom_tree
-        const right_bottom_tree = try deserializeHashSubTree(alloc, serialized[right_bottom_tree_offset..]);
+        const right_bottom_tree = deserializeHashSubTree(alloc, serialized[right_bottom_tree_offset..]) catch |err| {
+            left_bottom_tree.deinit();
+            top_tree.deinit();
+            return err;
+        };
 
         // Initialize the secret key
         out.* = GeneralizedXMSSSecretKey{
@@ -2261,7 +2393,9 @@ pub const GeneralizedXMSSSignatureScheme = struct {
         }
 
         // Store layers in HashSubTree so they can be reused during signing (major optimization!)
-        return try HashSubTree.initWithLayers(self.allocator, bottom_root, bottom_layers);
+        // Bottom tree depth is log_lifetime (32 for 2^32), matching Rust's encoding
+        const tree_depth = self.lifetime_params.log_lifetime;
+        return try HashSubTree.initWithLayers(self.allocator, bottom_root, bottom_layers, tree_depth);
     }
 
     /// Compute hash chain (matching Rust chain function)
@@ -4666,11 +4800,16 @@ pub const GeneralizedXMSSSignatureScheme = struct {
         activation_epoch: usize,
         num_active_epochs: usize,
     ) !KeyGenResult {
+        // CRITICAL: Rust leansig library multiplies num_active_epochs by 128 internally
+        // To match Rust's behavior exactly, we multiply by 128 here
+        // Example: Input 1024 -> Rust stores 131072 (1024 * 128) in SSZ
+        const rust_compatible_num_active_epochs = num_active_epochs * 128;
+
         // Generate random parameter and PRF key (matching Rust order exactly)
         const parameter = try self.generateRandomParameter();
         const prf_key = try self.generateRandomPRFKey();
         // RNG has already been consumed by generateRandomPRFKey() (32 bytes)
-        return self.keyGenWithParameter(activation_epoch, num_active_epochs, parameter, prf_key, true);
+        return self.keyGenWithParameter(activation_epoch, rust_compatible_num_active_epochs, parameter, prf_key, true);
     }
 
     /// Key generation with provided parameter and PRF key (for reconstructing keys from serialized data)
@@ -5029,7 +5168,9 @@ pub const GeneralizedXMSSSignatureScheme = struct {
         }
 
         // Create a top tree for the secret key, preserving the layered structure for future path computation
-        const top_tree = try HashSubTree.initWithLayers(self.allocator, root_array, top_layers);
+        // Top tree depth is log_lifetime (32 for 2^32), matching Rust's encoding
+        const tree_depth = self.lifetime_params.log_lifetime;
+        const top_tree = try HashSubTree.initWithLayers(self.allocator, root_array, top_layers, tree_depth);
         top_layers = top_layers[0..0];
 
         // Create public and secret keys (store root in Montgomery form to match Rust)
