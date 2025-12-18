@@ -570,6 +570,7 @@ pub fn poseidon2_24_plonky3_with_mds_light(state: []F, apply_mds_light: bool) vo
 
 // Wrapper structs for compatibility
 pub const Poseidon2KoalaBear16Plonky3 = struct {
+    pub const WIDTH = 16;
     pub const Field = F;
 
     pub fn permutation(state: []F) void {
@@ -620,6 +621,7 @@ pub const Poseidon2KoalaBear16Plonky3 = struct {
 };
 
 pub const Poseidon2KoalaBear24Plonky3 = struct {
+    pub const WIDTH = 24;
     pub const Field = F;
 
     pub fn permutation(state: []F) void {
