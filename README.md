@@ -332,6 +332,22 @@ zig build
 
 When contributing changes that may affect portability, ensure that `zig build` succeeds on your target platforms, and use the benchmark script on at least one platform to confirm cross-language compatibility.
 
+## SSZ Integration
+
+hash-zig provides an SSZ-compatible Poseidon2 hasher that matches the SHA256-style API expected by SSZ merkleization libraries.
+
+```zig
+const ssz = @import("ssz.zig");
+const hash_zig = @import("hash-zig");
+
+const PoseidonHasher = hash_zig.ssz.SszHasher;
+
+var root: [32]u8 = undefined;
+try ssz.hashTreeRoot(PoseidonHasher, MyType, value, &root, allocator);
+```
+
+The SSZ wrapper lives under `src/ssz/` and is exported as `hash_zig.ssz`.
+
 ### Repository Layout
 
 ```
@@ -400,4 +416,3 @@ Licensed under the Apache License 2.0 – see [LICENSE](LICENSE).
 - [leanSig](https://github.com/leanEthereum/leanSig) — original Rust implementation and reference tests
 - [zig-poseidon](https://github.com/blockblaz/zig-poseidon) — Poseidon2 over the KoalaBear field
 - [Generalized XMSS (ePrint 2025/055)](https://eprint.iacr.org/2025/055.pdf) — scheme specification
-- [Rust ↔ Zig compatibility investigation](analysis/rust_zig_compatibility_investigation.md)
