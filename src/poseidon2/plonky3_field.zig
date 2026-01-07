@@ -61,8 +61,10 @@ pub const KoalaBearField = struct {
 
     // Field inverse (exact from Plonky3)
     pub fn inverse(self: KoalaBearField) KoalaBearField {
-        const inv = modInverse(self.value, KOALABEAR_PRIME);
-        return KoalaBearField{ .value = inv };
+        // Compute inverse in normal form, then convert back to Montgomery.
+        const normal = fromMonty(self.value);
+        const inv_normal = modInverse(normal, KOALABEAR_PRIME);
+        return KoalaBearField{ .value = toMonty(inv_normal) };
     }
 
     // Double operation (exact from Plonky3)

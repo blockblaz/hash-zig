@@ -14,6 +14,7 @@ pub const merkle = @import("merkle/mod.zig");
 pub const signature = @import("signature/mod.zig");
 pub const utils = @import("utils/mod.zig");
 pub const poseidon2 = @import("poseidon2/root.zig");
+pub const ssz = @import("ssz/root.zig");
 
 // Note: SIMD implementations (simd_signature, simd_winternitz, etc.) are available
 // as separate modules in build.zig. Access them via:
@@ -63,4 +64,18 @@ pub const ShakePRFtoF_7_6 = @import("prf/shake_prf_to_field.zig").ShakePRFtoF_7_
 test "hash-zig root loads" {
     // Smoke test to ensure the root module compiles.
     try @import("std").testing.expect(true);
+}
+
+// Import all sub-modules to run their tests
+test {
+    _ = core;
+    _ = hash;
+    _ = prf;
+    _ = encoding;
+    _ = wots;
+    _ = merkle;
+    _ = signature;
+    _ = utils;
+    _ = poseidon2;
+    _ = ssz;
 }
