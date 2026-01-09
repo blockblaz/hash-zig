@@ -33,7 +33,7 @@ pub fn main() !void {
 
     // Benchmark: compress16SIMD with SIMD-packed input
     var packed_input: [16]poseidon2_simd.PackedF = undefined;
-    
+
     // Initialize with test data
     for (0..16) |i| {
         var values: [SIMD_WIDTH]u32 = undefined;
@@ -77,4 +77,3 @@ pub fn main() !void {
     std.debug.print("  Actual keygen time: ~868 seconds\n", .{});
     std.debug.print("  Overhead factor: {d:.2}x\n\n", .{868.0 / estimated_time_s});
 }
-

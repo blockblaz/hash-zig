@@ -7,20 +7,20 @@ pub fn build(b: *std.Build) void {
     const enable_debug_logs = b.option(bool, "debug-logs", "Enable verbose std.debug logging") orelse false;
     const enable_profile_keygen = b.option(bool, "enable-profile-keygen", "Enable detailed keygen profiling logs") orelse false;
     const enable_sanitize = b.option(bool, "sanitize", "Enable AddressSanitizer (default: false)") orelse false;
-    
+
     // Auto-detect SIMD width based on target CPU features
     // If user explicitly sets simd-width, use that; otherwise auto-detect
     const explicit_simd_width = b.option(u32, "simd-width", "SIMD width (4 or 8, default: auto-detect)");
     const simd_width: u32 = if (explicit_simd_width) |width| width else blk: {
         // Auto-detect based on target architecture and CPU features
         const target_info = target.result;
-        
+
         // Only x86_64 can support AVX-512 (8-wide SIMD)
         if (target_info.cpu.arch == .x86_64) {
             // Check if AVX-512F feature is enabled in the target
             const avx512f_feature = @intFromEnum(std.Target.x86.Feature.avx512f);
             const has_avx512_feature = target_info.cpu.features.isEnabled(avx512f_feature);
-            
+
             if (has_avx512_feature) {
                 std.debug.print("Build: Auto-detected AVX-512 support, using 8-wide SIMD\n", .{});
                 break :blk 8;

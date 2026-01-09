@@ -76,4 +76,3 @@ pub fn main() !void {
     std.debug.print("  Throughput: {d:.0} verifications/sec\n", .{ops_per_sec});
     std.debug.print("  Lifetime: 2^{d}\n", .{lifetime_power});
 }
-
