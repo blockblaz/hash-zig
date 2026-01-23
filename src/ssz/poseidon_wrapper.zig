@@ -69,7 +69,9 @@ pub fn PoseidonHasher(comptime Poseidon2Type: type) type {
         /// so we buffer until we have enough data.
         pub fn update(self: *Self, data: []const u8) void {
             // Enforce the 64-byte limit explicitly
-            std.debug.assert(self.buffer_len + data.len <= BUFFER_SIZE);
+            if (self.buffer_len >= BUFFER_SIZE or data.len > BUFFER_SIZE - self.buffer_len) {
+                @panic("Input exceeds 64-byte SSZ compression limit");
+            }
 
             // Copy data into buffer
             @memcpy(self.buffer[self.buffer_len..][0..data.len], data);
@@ -78,9 +80,13 @@ pub fn PoseidonHasher(comptime Poseidon2Type: type) type {
 
         /// Finalize the hash and write the result to out
         pub fn final(self: *Self, out: []u8) void {
-            std.debug.assert(out.len == 32);
+            if (out.len != 32) {
+                @panic("Output buffer must be 32 bytes");
+            }
             // Enforce exact length: SSZ internal nodes and mix-in-length always pass 64 bytes.
-            std.debug.assert(self.buffer_len == BUFFER_SIZE);
+            if (self.buffer_len != BUFFER_SIZE) {
+                @panic("SSZ compression requires exactly 64 bytes of input");
+            }
 
             // Byte -> 24-bit limb packing (injective for fixed 64-byte inputs).
             var limbs: [LIMBS]u32 = undefined;
