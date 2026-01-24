@@ -132,17 +132,17 @@ fn readPublicKeyFromJson(path: []const u8, allocator: std.mem.Allocator) !hash_z
 ///   5. hashes: for each hash:
 ///      - array_len: u64 = 8 (little endian)
 ///      - 8 u32 values in canonical form
-/// 
+///
 /// This function writes the signature in bincode format matching Rust's serialization.
 /// The output is then padded to exactly 3116 bytes to comply with leanSpec:
 /// https://github.com/leanEthereum/leanSpec/blob/main/src/lean_spec/subspecs/containers/signature.py
-/// 
+///
 /// The leanSpec requires:
 ///   1. Signature container: exactly 3116 bytes (Bytes3116)
 ///   2. Signature data: bincode format at the beginning
 ///   3. Can be sliced to scheme.config.SIGNATURE_LEN_BYTES if needed
 ///   4. Format: XmssSignature.from_bytes (bincode deserialization)
-/// 
+///
 /// Note: Rust's bincode serializes field elements in canonical form, not Montgomery
 pub fn writeSignatureBincode(path: []const u8, signature: *const hash_zig.GeneralizedXMSSSignature, rand_len: usize, hash_len: usize) !void {
     var file = try std.fs.cwd().createFile(path, .{ .truncate = true });
@@ -150,10 +150,10 @@ pub fn writeSignatureBincode(path: []const u8, signature: *const hash_zig.Genera
 
     const writer = file.writer();
     const path_nodes = signature.getPath().getNodes();
-    
+
     // Write path_len (u64) - Vec length
     try writeLength(writer, path_nodes.len);
-    
+
     // Write path nodes (each as: 8 u32 values in canonical form, NO length prefix for fixed arrays)
     // Rust's bincode serializes Vec<[T; N]> as: Vec length + elements directly (no per-array length)
     for (path_nodes) |node| {
@@ -181,7 +181,7 @@ pub fn writeSignatureBincode(path: []const u8, signature: *const hash_zig.Genera
     // Write hashes_len (u64) - Vec length
     const hashes = signature.getHashes();
     try writeLength(writer, hashes.len);
-    
+
     // Write hashes (each as: 8 u32 values in canonical form, NO length prefix for fixed arrays)
     // Rust's bincode serializes Vec<[T; N]> as: Vec length + elements directly (no per-array length)
     // NOTE: Rust's bincode serializes field elements in CANONICAL form
@@ -214,7 +214,7 @@ pub fn readSignatureBincode(path: []const u8, allocator: std.mem.Allocator, rand
     // Read path_len (u64) - Vec length
     const path_len = try readLength(reader);
     if (path_len == 0 or path_len > max_path_len) return BincodeError.InvalidPathLength;
-    
+
     // Read path nodes (each has: HASH_LEN u32 values in CANONICAL form, NO length prefix for fixed arrays)
     // Rust's bincode serializes Vec<FieldArray<N>> as: Vec length + elements directly (no per-array length)
     // Rust writes FieldArray<HASH_LEN> which serializes exactly HASH_LEN elements
@@ -265,7 +265,7 @@ pub fn readSignatureBincode(path: []const u8, allocator: std.mem.Allocator, rand
         path_ptr.deinit();
         return BincodeError.InvalidHashesLength;
     }
-    
+
     // Read hashes (each has: HASH_LEN u32 values in CANONICAL form, NO length prefix for fixed arrays)
     // Rust's bincode serializes Vec<FieldArray<N>> as: Vec length + elements directly (no per-array length)
     // Rust writes FieldArray<HASH_LEN> which serializes exactly HASH_LEN elements
@@ -300,7 +300,7 @@ pub fn readSignatureBincode(path: []const u8, allocator: std.mem.Allocator, rand
         return err;
     };
     allocator.free(hashes_tmp);
-    
+
     // Debug: print rho values from signature after creation (for Zig→Zig debugging)
     const rho_from_sig = signature_ptr.getRho();
     stderr.print("ZIG_READ_DEBUG: rho from signature.getRho() (Montgomery): ", .{}) catch {};
@@ -308,7 +308,7 @@ pub fn readSignatureBincode(path: []const u8, allocator: std.mem.Allocator, rand
         stderr.print("0x{x:0>8} ", .{rho_from_sig[i].toMontgomery()}) catch {};
     }
     stderr.print("\n", .{}) catch {};
-    
+
     return signature_ptr;
 }
 
@@ -390,7 +390,7 @@ fn verifyCommand(
     defer signature_ptr.deinit();
 
     const msg_bytes = messageToBytes(message);
-    
+
     // Debug: Print signature rho values
     const rho = signature_ptr.getRho();
     log.emit("ZIG_REMOTE_VERIFY_DEBUG: Signature rho (first {}): ", .{scheme.lifetime_params.rand_len_fe});
@@ -398,7 +398,7 @@ fn verifyCommand(
         log.emit("0x{x:0>8} ", .{rho[i].toCanonical()});
     }
     log.emit("\n", .{});
-    
+
     const ok = try scheme.verify(&pk, epoch, msg_bytes, signature_ptr);
     log.emit("VERIFY_RESULT:{}\n", .{ok});
 }
