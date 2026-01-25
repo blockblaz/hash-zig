@@ -56,6 +56,10 @@ pub fn PoseidonHasher(comptime Poseidon2Type: type) type {
         /// Options struct for compatibility with std.crypto.hash API
         pub const Options = struct {};
 
+        // std.crypto.hash-compatible constants
+        pub const digest_length: usize = 32;
+        pub const block_length: usize = 64;
+
         /// Initialize a new hasher instance
         pub fn init(_: Options) Self {
             return .{
