@@ -278,7 +278,7 @@ test "chacha12 rng compatibility" {
     var seed: [32]u8 = undefined;
     @memset(&seed, 0x42);
 
-    var rng = chacha12_rng.init(seed);
+    var rng = chacha12_rng.ChaCha12Rng.init(seed);
     var prf_key: [32]u8 = undefined;
     rng.fill(&prf_key);
 
@@ -368,25 +368,30 @@ test "epoch range validation" {
     @memset(&seed, 0x77);
 
     // Generate key with limited epoch range
+    // Note: keyGen(100, 10) expands to align with bottom tree boundaries
+    // For lifetime 2^8: leafs_per_bottom_tree = 16, min 2 bottom trees = 32 epochs
+    // Expansion: start aligns to 96, end expands to 128, so valid range is [96, 128)
     var keypair = try sig_scheme.keyGen(100, 10);
     defer keypair.secret_key.deinit();
 
     log.print("Keypair generated:\n", .{});
-    log.print("  Activation epoch: {}\n", .{keypair.secret_key.activation_epoch});
-    log.print("  Active epochs: {}\n", .{keypair.secret_key.num_active_epochs});
+    log.print("  Requested: activation=100, num_active=10\n", .{});
+    log.print("  Expanded activation epoch: {}\n", .{keypair.secret_key.activation_epoch});
+    log.print("  Expanded active epochs: {}\n", .{keypair.secret_key.num_active_epochs});
     log.print("  Valid range: {} - {}\n\n", .{ keypair.secret_key.activation_epoch, keypair.secret_key.activation_epoch + keypair.secret_key.num_active_epochs - 1 });
 
     const test_message = [_]u8{ 0x54, 0x65, 0x73, 0x74, 0x20, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65 } ++ [_]u8{0x00} ** 20; // "Test message" + padding
 
-    // Test signing within valid range
-    log.print("Signing at epoch 105 (valid)...", .{});
+    // Test signing within valid range (epoch 105 is in expanded range [96, 128))
+    log.print("Signing at epoch 105 (valid, in expanded range [96, 128))...", .{});
     var sig_valid = try sig_scheme.sign(keypair.secret_key, 105, test_message);
     defer sig_valid.deinit();
     log.print(" ✅\n", .{});
 
     // Test signing outside valid range (should fail)
-    log.print("Signing at epoch 110 (invalid)...", .{});
-    const result = sig_scheme.sign(keypair.secret_key, 110, test_message);
+    // Epoch 128 is outside the expanded range [96, 128)
+    log.print("Signing at epoch 128 (invalid, outside expanded range)...", .{});
+    const result = sig_scheme.sign(keypair.secret_key, 128, test_message);
     try testing.expectError(error.KeyNotActive, result);
     log.print(" ✅ Correctly rejected\n", .{});
 

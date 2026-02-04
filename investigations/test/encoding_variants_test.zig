@@ -34,7 +34,7 @@ fn testWinternitzVariants(allocator: std.mem.Allocator) !void {
                     const epoch_u64 = @as(u64, epoch);
                     if (epoch_u64 >= prepared_interval.start and epoch_u64 < prepared_interval.end) break;
                     if (iterations >= epoch) break;
-                    try keypair.secret_key.advancePreparation(@intCast(log_lifetime));
+                    try keypair.secret_key.advancePreparation(scheme, @intCast(log_lifetime));
                     iterations += 1;
                 }
 
@@ -79,7 +79,7 @@ fn testTargetSumVariants(allocator: std.mem.Allocator) !void {
                     const epoch_u64 = @as(u64, epoch);
                     if (epoch_u64 >= prepared_interval.start and epoch_u64 < prepared_interval.end) break;
                     if (iterations >= epoch) break;
-                    try keypair.secret_key.advancePreparation(@intCast(log_lifetime));
+                    try keypair.secret_key.advancePreparation(scheme, @intCast(log_lifetime));
                     iterations += 1;
                 }
 
@@ -128,7 +128,7 @@ fn testMultipleLifetimeConfigurations(allocator: std.mem.Allocator) !void {
                     const epoch_u64 = @as(u64, epoch);
                     if (epoch_u64 >= prepared_interval.start and epoch_u64 < prepared_interval.end) break;
                     if (iterations >= epoch) break;
-                    try keypair.secret_key.advancePreparation(@intCast(log_lifetime));
+                    try keypair.secret_key.advancePreparation(scheme, @intCast(log_lifetime));
                     iterations += 1;
                 }
 
@@ -180,7 +180,7 @@ fn testSignatureSchemeCorrectnessVariants(allocator: std.mem.Allocator) !void {
             const epoch_u64 = @as(u64, test_case.test_epoch);
             if (epoch_u64 >= prepared_interval.start and epoch_u64 < prepared_interval.end) break;
             if (iterations >= test_case.test_epoch) break;
-            try keypair.secret_key.advancePreparation(@intCast(log_lifetime));
+            try keypair.secret_key.advancePreparation(scheme, @intCast(log_lifetime));
             iterations += 1;
         }
 

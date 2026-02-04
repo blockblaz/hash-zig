@@ -76,15 +76,15 @@ test "SSZ: HashTreeOpening roundtrip" {
     const original = try HashTreeOpening.init(allocator, nodes);
     defer original.deinit();
 
-    // Encode
+    // Encode (using 8 field elements per hash, matching lifetime_2_8)
     var encoded = std.ArrayList(u8).init(allocator);
     defer encoded.deinit();
-    try original.sszEncode(&encoded);
+    try original.sszEncode(&encoded, 8);
 
-    // Decode
+    // Decode (stack-allocated, so only free nodes, not the struct itself)
     var decoded: HashTreeOpening = undefined;
-    defer decoded.deinit();
-    try HashTreeOpening.sszDecode(encoded.items, &decoded, allocator);
+    defer allocator.free(decoded.nodes);
+    try HashTreeOpening.sszDecode(encoded.items, &decoded, allocator, 8);
 
     // Verify
     const decoded_nodes = decoded.getNodes();
@@ -778,18 +778,18 @@ pub const HashTreeOpening = struct {
     }
 
     /// Serialize to SSZ bytes (convenience method matching Rust's to_bytes)
-    pub fn toBytes(self: *const HashTreeOpening, allocator: std.mem.Allocator) ![]u8 {
+    pub fn toBytes(self: *const HashTreeOpening, allocator: std.mem.Allocator, hash_len_fe: usize) ![]u8 {
         var encoded = std.ArrayList(u8).init(allocator);
         errdefer encoded.deinit();
-        try self.sszEncode(&encoded);
+        try self.sszEncode(&encoded, hash_len_fe);
         return encoded.toOwnedSlice();
     }
 
     /// Deserialize from SSZ bytes (convenience method matching Rust's from_bytes)
-    pub fn fromBytes(serialized: []const u8, allocator: std.mem.Allocator) !*HashTreeOpening {
+    pub fn fromBytes(serialized: []const u8, allocator: std.mem.Allocator, hash_len_fe: usize) !*HashTreeOpening {
         const decoded = try allocator.create(HashTreeOpening);
         errdefer allocator.destroy(decoded);
-        try sszDecode(serialized, decoded, allocator);
+        try sszDecode(serialized, decoded, allocator, hash_len_fe);
         return decoded;
     }
 };
@@ -4788,16 +4788,11 @@ pub const GeneralizedXMSSSignatureScheme = struct {
         activation_epoch: usize,
         num_active_epochs: usize,
     ) !KeyGenResult {
-        // Rust leansig library multiplies num_active_epochs by 128 internally
-        // To match Rust's behavior exactly, we multiply by 128 here
-        // Example: Input 1024 -> Rust stores 131072 (1024 * 128) in SSZ
-        const rust_compatible_num_active_epochs = num_active_epochs * 128;
-
         // Generate random parameter and PRF key (matching Rust order exactly)
         const parameter = try self.generateRandomParameter();
         const prf_key = try self.generateRandomPRFKey();
         // RNG has already been consumed by generateRandomPRFKey() (32 bytes)
-        return self.keyGenWithParameter(activation_epoch, rust_compatible_num_active_epochs, parameter, prf_key, true);
+        return self.keyGenWithParameter(activation_epoch, num_active_epochs, parameter, prf_key, true);
     }
 
     /// Key generation with provided parameter and PRF key (for reconstructing keys from serialized data)
@@ -4831,7 +4826,8 @@ pub const GeneralizedXMSSSignatureScheme = struct {
             return error.InvalidActivationParameters;
         }
 
-        // Expand activation time to align with bottom trees
+        // Expand activation time to align with bottom trees (matching Rust exactly)
+        const leafs_per_bottom_tree = @as(usize, 1) << @intCast(self.lifetime_params.log_lifetime / 2);
         const expansion_result = expandActivationTime(self.lifetime_params.log_lifetime, activation_epoch, num_active_epochs);
         const num_bottom_trees = expansion_result.end - expansion_result.start;
 
@@ -4839,9 +4835,9 @@ pub const GeneralizedXMSSSignatureScheme = struct {
             return error.InsufficientBottomTrees;
         }
 
-        // Use the provided activation parameters directly (not expanded)
-        const expanded_activation_epoch = activation_epoch;
-        const expanded_num_active_epochs = num_active_epochs;
+        // Compute expanded values from bottom tree alignment (matching Rust lines 692-693)
+        const expanded_activation_epoch = expansion_result.start * leafs_per_bottom_tree;
+        const expanded_num_active_epochs = num_bottom_trees * leafs_per_bottom_tree;
 
         // Consume RNG state only if it hasn't been consumed yet
         // When called from keyGen(), the RNG state is already after PRF key generation (32 bytes consumed).
@@ -5328,16 +5324,12 @@ pub const GeneralizedXMSSSignatureScheme = struct {
 
         // For top tree, use bottom_tree_index directly (absolute position)
         // Rust's combined_path uses epoch directly, and the top tree layers are built
-        // with start_index = left_bottom_tree_index from keyGen, so we use bottom_tree_index
-        // directly, and computePathFromLayers handles the offset via layer.start_index subtraction
-        // left_bottom_tree_index already declared above
+        // with start_index from keyGen (expansion_result.start), so we use bottom_tree_index
+        // directly. computePathFromLayers handles the offset via layer.start_index subtraction.
+        // Note: left_bottom_tree_index changes after advancePreparation, but the top tree's
+        // layer start_index values remain fixed from keygen. The path computation is independent
+        // of the current prepared position - it uses each layer's own start_index.
         const top_pos = @as(u32, @intCast(bottom_tree_index));
-
-        // This ensures the path computation uses the correct offset
-        if (top_layers.len > 0 and top_layers[0].start_index != left_bottom_tree_index) {
-            log.debugPrint("ZIG_SIGN_ERROR: Top tree layer start_index mismatch! top_layers[0].start_index={}, left_bottom_tree_index={}\n", .{ top_layers[0].start_index, left_bottom_tree_index });
-            return error.TopTreeStartIndexMismatch;
-        }
 
         // Debug: log top tree layer start_index values
         log.print("ZIG_SIGN_DEBUG: Computing top tree path: bottom_tree_index={}, left_bottom_tree_index={}, top_pos={}\n", .{ bottom_tree_index, left_bottom_tree_index, top_pos });
