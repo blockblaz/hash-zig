@@ -1,211 +1,198 @@
-env:
-  BENCHMARK_INCLUDE_2_32: "false"
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel in-progress runs for PRs
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 
 name: CI
 
-on:
-  push:
-    branches:
-      - main
-      - master
-      - develop
-  pull_request:
-    branches:
-      - main
-      - master
-      - develop
-
 jobs:
   lint:
-    name: Lint
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: 0.14.1
-      
-      - name: Verify Zig installation
-        run: zig version
-      
-      - name: Clear Zig cache and regenerate dependency hash
-        shell: bash
-        run: |
-          echo "Clearing Zig cache and regenerating dependency hash..."
-          # Clear all possible cache locations
-          rm -rf ~/.cache/zig || true
-          rm -rf .zig-cache || true
-          rm -rf /tmp/zig-* || true
-          # Create a clean build.zig.zon without zig_poseidon dependency
-          cp build.zig.zon build.zig.zon.backup
-          awk '/zig_poseidon/{flag=1} flag && /}/ {flag=0; next} !flag' build.zig.zon > build.zig.zon.tmp && mv build.zig.zon.tmp build.zig.zon
-          # Add dependency back with fresh fetch
-          zig fetch --save=zig_poseidon https://github.com/blockblaz/zig-poseidon/archive/main.tar.gz
-          # Verify the dependency was fetched
-          ls -la ~/.cache/zig/p/ || echo "No cache directory found"
-          echo "Dependencies fetched successfully with fresh hash"
-      
-      - name: Run lint (zig fmt --check)
-        run: zig build lint
-  
-  test:
-    name: Test & Build
-    runs-on: ubuntu-latest
-    outputs:
-      has_zig_changes: ${{ steps.check_changes.outputs.has_zig_changes }}
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          submodules: recursive
-      
-      
-      - name: Check for Zig file changes
-        id: check_changes
-        run: |
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
-            # Check if any .zig files changed in this PR
-            git fetch origin ${{ github.base_ref }}
-            CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
-            echo "Changed files:"
-            echo "$CHANGED_FILES"
-            
-            if echo "$CHANGED_FILES" | grep -qE '\.(zig|zon)$'; then
-              echo "has_zig_changes=true" >> $GITHUB_OUTPUT
-              echo "✅ Zig files changed - will run tests"
-            else
-              echo "has_zig_changes=false" >> $GITHUB_OUTPUT
-              echo "⏭️  No Zig files changed - skipping tests"
-            fi
-          else
-            # For push events, always run tests
-            echo "has_zig_changes=true" >> $GITHUB_OUTPUT
-            echo "✅ Push event - will run tests"
+    - uses: actions/checkout@v4
+
+    - name: Set up Zig
+      uses: mlugg/setup-zig@v2.0.5
+      with:
+        version: 0.14.1
+
+    - name: Cache Zig packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/zig
+        key: ${{ runner.os }}-zig-packages-${{ hashFiles('build.zig.zon') }}
+        restore-keys: |
+          ${{ runner.os }}-zig-packages-
+
+    - name: Fetch Zig dependencies with retry
+      run: |
+        max_attempts=5
+        attempt=1
+        while [ $attempt -le $max_attempts ]; do
+          if zig build --fetch; then
+            echo "Successfully fetched dependencies on attempt $attempt"
+            exit 0
           fi
-      
-      - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: 0.14.1
-      
-      - name: Verify Zig installation
-        run: zig version
+          echo "Attempt $attempt/$max_attempts failed, retrying in 5 seconds..."
+          sleep 5
+          attempt=$((attempt + 1))
+        done
+        echo "Failed to fetch dependencies after $max_attempts attempts"
+        exit 1
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          # Use nightly toolchain to support Rust edition 2024 required by leansig dependency
-          # This matches rust-toolchain.toml in benchmark/rust_benchmark/
-          toolchain: nightly
-          components: clippy, rustfmt
-      
-      - name: Clear Zig cache and fetch dependencies
-        shell: bash
-        run: |
-          echo "Clearing Zig cache and fetching dependencies..."
-          # Clear all possible cache locations
-          rm -rf ~/.cache/zig || true
-          rm -rf .zig-cache || true
-          rm -rf /tmp/zig-* || true
-          # Force fetch with explicit name
-          zig fetch --save=zig_poseidon https://github.com/blockblaz/zig-poseidon/archive/main.tar.gz
-          # Verify the dependency was fetched
-          ls -la ~/.cache/zig/p/ || echo "No cache directory found"
-          echo "Dependencies fetched successfully"
-      
-      - name: Build library
-        run: zig build install -Doptimize=ReleaseFast -Ddebug-logs=false
+    - name: Lint
+      run: zig fmt --check .
 
-      - name: Run cross-language compatibility suite (SSZ)
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "Running benchmark/benchmark.py for cross-language SSZ compatibility (lifetimes 2^8 and 2^32)"
-          python3 benchmark/benchmark.py --lifetime "2^8,2^32"
-      
-      - name: Test pre-generated keys (SSZ)
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "Running inspect_pregenerated_keys.py to verify pre-generated key compatibility"
-          python3 benchmark/inspect_pregenerated_keys.py
-  
-  cross-platform-build:
-    name: Cross-Platform Build (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+  test:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Set up Zig
+      uses: mlugg/setup-zig@v2.0.5
+      with:
+        version: 0.14.1
+
+    - name: Cache Zig packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/zig
+        key: ${{ runner.os }}-zig-packages-${{ hashFiles('build.zig.zon') }}
+        restore-keys: |
+          ${{ runner.os }}-zig-packages-
+
+    - name: Fetch Zig dependencies with retry
+      run: |
+        max_attempts=5
+        attempt=1
+        while [ $attempt -le $max_attempts ]; do
+          if zig build --fetch; then
+            echo "Successfully fetched dependencies on attempt $attempt"
+            exit 0
+          fi
+          echo "Attempt $attempt/$max_attempts failed, retrying in 5 seconds..."
+          sleep 5
+          attempt=$((attempt + 1))
+        done
+        echo "Failed to fetch dependencies after $max_attempts attempts"
+        exit 1
+
+    - name: Build library
+      run: zig build install -Doptimize=ReleaseFast -Ddebug-logs=false
+
+    - name: Run core unit tests
+      run: zig build test --summary all
+
+    - name: Run extended tests
+      run: zig build test-extended --summary all
+
+    - name: Run lifetime tests
+      run: zig build test-lifetimes --summary all
+
+  cross-language:
+    name: Cross-Language Compatibility (SSZ)
+    runs-on: ubuntu-latest
     needs: test
-    if: needs.test.outputs.has_zig_changes == 'true'
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Set up Zig
+      uses: mlugg/setup-zig@v2.0.5
+      with:
+        version: 0.14.1
+
+    - name: Set up Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        toolchain: nightly
+
+    - name: Cache Zig packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/zig
+        key: ${{ runner.os }}-zig-packages-${{ hashFiles('build.zig.zon') }}
+        restore-keys: |
+          ${{ runner.os }}-zig-packages-
+
+    - name: Cache Rust dependencies
+      uses: Swatinem/rust-cache@v2
+      with:
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Fetch Zig dependencies with retry
+      run: |
+        max_attempts=5
+        attempt=1
+        while [ $attempt -le $max_attempts ]; do
+          if zig build --fetch; then
+            echo "Successfully fetched dependencies on attempt $attempt"
+            exit 0
+          fi
+          echo "Attempt $attempt/$max_attempts failed, retrying in 5 seconds..."
+          sleep 5
+          attempt=$((attempt + 1))
+        done
+        echo "Failed to fetch dependencies after $max_attempts attempts"
+        exit 1
+
+    - name: Build library
+      run: zig build install -Doptimize=ReleaseFast -Ddebug-logs=false
+
+    - name: Run cross-language compatibility suite
+      run: python3 benchmark/benchmark.py --lifetime "2^8,2^32"
+
+    - name: Test pre-generated keys
+      run: python3 benchmark/inspect_pregenerated_keys.py
+
+  build:
+    name: Build (${{ matrix.os }})
+    needs: lint
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [macos-latest, windows-latest]
-    
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: 0.14.1
-      
-      - name: Clear Zig cache and regenerate dependency hash
-        shell: bash
-        run: |
-          echo "Clearing Zig cache and regenerating dependency hash..."
-          # Clear all possible cache locations
-          rm -rf ~/.cache/zig || true
-          rm -rf .zig-cache || true
-          rm -rf /tmp/zig-* || true
-          # Create a clean build.zig.zon without zig_poseidon dependency
-          cp build.zig.zon build.zig.zon.backup
-          awk '/zig_poseidon/{flag=1} flag && /}/ {flag=0; next} !flag' build.zig.zon > build.zig.zon.tmp && mv build.zig.zon.tmp build.zig.zon
-          # Add dependency back with fresh fetch
-          zig fetch --save=zig_poseidon https://github.com/blockblaz/zig-poseidon/archive/main.tar.gz
-          # Verify the dependency was fetched
-          ls -la ~/.cache/zig/p/ || echo "No cache directory found"
-          echo "Dependencies fetched successfully with fresh hash"
-      
-      - name: Build library (verify cross-platform compilation)
-        run: zig build
-  
-  build-examples:
-    name: Build Examples
-    runs-on: ubuntu-latest
-    needs: [lint, test]
-    if: needs.test.outputs.has_zig_changes == 'true'
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: 0.14.1
-      
-      - name: Clear Zig cache and regenerate dependency hash
-        shell: bash
-        run: |
-          echo "Clearing Zig cache and regenerating dependency hash..."
-          # Clear all possible cache locations
-          rm -rf ~/.cache/zig || true
-          rm -rf .zig-cache || true
-          rm -rf /tmp/zig-* || true
-          # Create a clean build.zig.zon without zig_poseidon dependency
-          cp build.zig.zon build.zig.zon.backup
-          awk '/zig_poseidon/{flag=1} flag && /}/ {flag=0; next} !flag' build.zig.zon > build.zig.zon.tmp && mv build.zig.zon.tmp build.zig.zon
-          # Add dependency back with fresh fetch
-          zig fetch --save=zig_poseidon https://github.com/blockblaz/zig-poseidon/archive/main.tar.gz
-          # Verify the dependency was fetched
-          ls -la ~/.cache/zig/p/ || echo "No cache directory found"
-          echo "Dependencies fetched successfully with fresh hash"
-      
-      - name: Build library
-        run: zig build
+    - uses: actions/checkout@v4
 
+    - name: Set up Zig
+      uses: mlugg/setup-zig@v2.0.5
+      with:
+        version: 0.14.1
+
+    - name: Cache Zig packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/zig
+        key: ${{ runner.os }}-zig-packages-${{ hashFiles('build.zig.zon') }}
+        restore-keys: |
+          ${{ runner.os }}-zig-packages-
+
+    - name: Fetch Zig dependencies with retry
+      run: |
+        max_attempts=5
+        attempt=1
+        while [ $attempt -le $max_attempts ]; do
+          if zig build --fetch; then
+            echo "Successfully fetched dependencies on attempt $attempt"
+            exit 0
+          fi
+          echo "Attempt $attempt/$max_attempts failed, retrying in 5 seconds..."
+          sleep 5
+          attempt=$((attempt + 1))
+        done
+        echo "Failed to fetch dependencies after $max_attempts attempts"
+        exit 1
+
+    - name: Build
+      run: zig build

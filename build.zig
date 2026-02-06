@@ -68,7 +68,7 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(lib);
 
     // Lint (using built-in formatter in check mode)
-    const lint_cmd = b.addSystemCommand(&.{ "zig", "fmt", "--check", "src", "examples" });
+    const lint_cmd = b.addSystemCommand(&.{ "zig", "fmt", "--check", "." });
     const lint_step = b.step("lint", "Run lint (zig fmt --check)");
     lint_step.dependOn(&lint_cmd.step);
 
