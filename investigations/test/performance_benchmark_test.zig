@@ -72,7 +72,7 @@ fn benchmarkSigning(allocator: std.mem.Allocator, lifetime: hash_zig.KeyLifetime
         const epoch_u64 = @as(u64, epoch);
         if (epoch_u64 >= prepared_interval.start and epoch_u64 < prepared_interval.end) break;
         if (prep_iterations >= epoch) break;
-        try keypair.secret_key.advancePreparation(@intCast(log_lifetime));
+        try keypair.secret_key.advancePreparation(scheme, @intCast(log_lifetime));
         prep_iterations += 1;
     }
 
@@ -125,7 +125,7 @@ fn benchmarkVerification(allocator: std.mem.Allocator, lifetime: hash_zig.KeyLif
         const epoch_u64 = @as(u64, epoch);
         if (epoch_u64 >= prepared_interval.start and epoch_u64 < prepared_interval.end) break;
         if (prep_iterations >= epoch) break;
-        try keypair.secret_key.advancePreparation(@intCast(log_lifetime));
+        try keypair.secret_key.advancePreparation(scheme, @intCast(log_lifetime));
         prep_iterations += 1;
     }
 

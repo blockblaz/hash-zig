@@ -67,6 +67,11 @@ pub const KoalaBearField = struct {
         return KoalaBearField{ .value = toMonty(inv_normal) };
     }
 
+    // Field negation (additive inverse)
+    pub fn neg(self: KoalaBearField) KoalaBearField {
+        return KoalaBearField.zero.sub(self);
+    }
+
     // Double operation (exact from Plonky3)
     pub fn double(self: KoalaBearField) KoalaBearField {
         return self.add(self);
