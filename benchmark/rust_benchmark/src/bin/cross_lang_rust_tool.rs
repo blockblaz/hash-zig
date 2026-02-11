@@ -367,9 +367,9 @@ fn inspect_command(sk_path: &str, pk_path: &str, lifetime: LifetimeTag) -> Resul
                 .map_err(|e: DecodeError| format!("Failed to decode secret key: {:?}", e))?;
             
             let pk_bytes = fs::read(pk_path)?;
-            let public_key: PkType = Decode::from_ssz_bytes(&pk_bytes)
+            let _public_key: PkType = Decode::from_ssz_bytes(&pk_bytes)
                 .map_err(|e: DecodeError| format!("Failed to decode public key: {:?}", e))?;
-            
+
             eprintln!("✅ Successfully deserialized keys for lifetime 2^8");
             eprintln!("  Public key size: {} bytes", pk_bytes.len());
             eprintln!("  Secret key size: {} bytes", sk_bytes.len());
@@ -386,9 +386,9 @@ fn inspect_command(sk_path: &str, pk_path: &str, lifetime: LifetimeTag) -> Resul
                 .map_err(|e: DecodeError| format!("Failed to decode secret key: {:?}", e))?;
             
             let pk_bytes = fs::read(pk_path)?;
-            let public_key: PkType = Decode::from_ssz_bytes(&pk_bytes)
+            let _public_key: PkType = Decode::from_ssz_bytes(&pk_bytes)
                 .map_err(|e: DecodeError| format!("Failed to decode public key: {:?}", e))?;
-            
+
             eprintln!("✅ Successfully deserialized keys for lifetime 2^18");
             eprintln!("  Public key size: {} bytes", pk_bytes.len());
             eprintln!("  Secret key size: {} bytes", sk_bytes.len());
@@ -405,9 +405,9 @@ fn inspect_command(sk_path: &str, pk_path: &str, lifetime: LifetimeTag) -> Resul
                 .map_err(|e: DecodeError| format!("Failed to decode secret key: {:?}", e))?;
             
             let pk_bytes = fs::read(pk_path)?;
-            let public_key: PkType = Decode::from_ssz_bytes(&pk_bytes)
+            let _public_key: PkType = Decode::from_ssz_bytes(&pk_bytes)
                 .map_err(|e: DecodeError| format!("Failed to decode public key: {:?}", e))?;
-            
+
             eprintln!("✅ Successfully deserialized keys for lifetime 2^32");
             eprintln!("  Public key size: {} bytes", pk_bytes.len());
             eprintln!("  Secret key size: {} bytes", sk_bytes.len());
