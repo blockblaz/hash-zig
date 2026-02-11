@@ -45,7 +45,7 @@ fn testSignatureSchemeCorrectness(
         const epoch_u64 = @as(u64, epoch);
         if (epoch_u64 >= prepared_interval.start and epoch_u64 < prepared_interval.end) break;
         if (iterations >= epoch) break;
-        try keypair.secret_key.advancePreparation(@intCast(log_lifetime));
+        try keypair.secret_key.advancePreparation(scheme, @intCast(log_lifetime));
         iterations += 1;
     }
 
@@ -88,7 +88,7 @@ fn testDeterministicBehavior(allocator: std.mem.Allocator) !void {
         const epoch_u64 = @as(u64, epoch);
         if (epoch_u64 >= prepared_interval.start and epoch_u64 < prepared_interval.end) break;
         if (iterations >= epoch) break;
-        try keypair.secret_key.advancePreparation(8);
+        try keypair.secret_key.advancePreparation(scheme, 8);
         iterations += 1;
     }
 
@@ -192,7 +192,7 @@ fn testKeyPreparationAdvancement(allocator: std.mem.Allocator) !void {
     log.print("Initial prepared interval: {} to {}\n", .{ initial_prepared.start, initial_prepared.end });
 
     // Advance preparation
-    try keypair.secret_key.advancePreparation(8);
+    try keypair.secret_key.advancePreparation(scheme, 8);
     const advanced_prepared = keypair.secret_key.getPreparedInterval(8);
     log.print("Advanced prepared interval: {} to {}\n", .{ advanced_prepared.start, advanced_prepared.end });
 
