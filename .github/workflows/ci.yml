@@ -129,7 +129,6 @@ jobs:
       uses: Swatinem/rust-cache@v2
       with:
         workspaces: "benchmark/rust_benchmark -> target"
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
     - name: Fetch Zig dependencies with retry
       run: |
