@@ -83,7 +83,7 @@ test "SSZ: HashTreeOpening roundtrip" {
 
     // Decode (stack-allocated, so only free nodes, not the struct itself)
     var decoded: HashTreeOpening = undefined;
-    defer decoded.deinit();
+    defer decoded.deinitNodes();
     try HashTreeOpening.sszDecode(encoded.items, &decoded, allocator, 8);
 
     // Verify
@@ -711,8 +711,14 @@ pub const HashTreeOpening = struct {
         return self;
     }
 
-    pub fn deinit(self: *HashTreeOpening) void {
+    /// Frees only the internal nodes (for stack-allocated structs from sszDecode)
+    pub fn deinitNodes(self: *HashTreeOpening) void {
         self.allocator.free(self.nodes);
+    }
+
+    /// Frees nodes and the struct itself (for heap-allocated structs from init)
+    pub fn deinit(self: *HashTreeOpening) void {
+        self.deinitNodes();
         self.allocator.destroy(self);
     }
 
