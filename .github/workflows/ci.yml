@@ -27,7 +27,7 @@ jobs:
       - name: Setup Zig
         uses: goto-bus-stop/setup-zig@v2
         with:
-          version: 0.14.1
+          version: 0.15.2
       
       - name: Verify Zig installation
         run: zig version
@@ -92,7 +92,7 @@ jobs:
       - name: Setup Zig
         uses: goto-bus-stop/setup-zig@v2
         with:
-          version: 0.14.1
+          version: 0.15.2
       
       - name: Verify Zig installation
         run: zig version
@@ -152,7 +152,7 @@ jobs:
       - name: Setup Zig
         uses: goto-bus-stop/setup-zig@v2
         with:
-          version: 0.14.1
+          version: 0.15.2
       
       - name: Clear Zig cache and regenerate dependency hash
         shell: bash
@@ -187,7 +187,7 @@ jobs:
       - name: Setup Zig
         uses: goto-bus-stop/setup-zig@v2
         with:
-          version: 0.14.1
+          version: 0.15.2
       
       - name: Clear Zig cache and regenerate dependency hash
         shell: bash
