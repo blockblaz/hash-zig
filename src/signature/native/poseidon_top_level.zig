@@ -255,7 +255,9 @@ test "output layer sizes for comparison" {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    const stderr = std.io.getStdErr().writer();
+    var stderr_buf: [4096]u8 = undefined;
+    var stderr_file = std.fs.File.stderr().writer(&stderr_buf);
+    const stderr = &stderr_file.interface;
     try stderr.print("\nZig Layer Size Values\n", .{});
     try stderr.print("=====================\n", .{});
     try stderr.print("Format: w={{}}, v={{}}, d={{}} -> size\n\n", .{});

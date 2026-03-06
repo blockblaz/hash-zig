@@ -1,1 +1,2 @@
-pub usingnamespace @import("../merkle/merkle.zig");
+const merkle = @import("../merkle/merkle.zig");
+pub const MerkleTree = merkle.MerkleTree;

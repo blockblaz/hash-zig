@@ -273,7 +273,7 @@ test "chacha12 rng compatibility" {
     log.print("Test: ChaCha12 RNG Compatibility\n", .{});
     log.print("==============================================\n\n", .{});
 
-    const chacha12_rng = hash_zig.chacha12_rng;
+    const ChaCha12Rng = hash_zig.chacha12_rng.ChaCha12Rng;
 
     var seed: [32]u8 = undefined;
     @memset(&seed, 0x42);

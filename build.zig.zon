@@ -2,12 +2,12 @@
     .name = .hash_zig,
     .version = "1.1.3",
     .fingerprint = 0xc2f8b6b2acaee93c,
-    .minimum_zig_version = "0.14.1",
+    .minimum_zig_version = "0.15.2",
 
     .dependencies = .{
         .ssz = .{
-            .url = "https://github.com/blockblaz/ssz.zig/archive/refs/tags/v0.0.7.tar.gz",
-            .hash = "ssz-0.0.4-Lfwd65-iAgBkwCIZmHkrOvD3oCjooiBD73Nmp4gCNMG6",
+            .url = "https://github.com/blockblaz/ssz.zig/archive/c5394395dd7d0f8eda685c4723ad25ebbf550570.tar.gz",
+            .hash = "ssz-0.0.9-Lfwd693UAgBn89Sl4ljI4p3jW6ioLgonPWIdhIeIUDMN",
         },
     },
 

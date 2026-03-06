@@ -61,6 +61,10 @@ pub fn main() !void {
     @memcpy(message_bytes[0..copy_len], message[0..copy_len]);
 
     // Parse the signature and public key data
+    var stdout_buf: [4096]u8 = undefined;
+    var stdout_file = std.fs.File.stdout().writer(&stdout_buf);
+    const stdout = &stdout_file.interface;
+
     if (std.mem.startsWith(u8, signature_data, "SIGNATURE:")) {
         const signature_json = signature_data[10..]; // Skip "SIGNATURE:" prefix
 
@@ -70,7 +74,6 @@ pub fn main() !void {
         else
             public_key_data;
 
-        const stdout = std.io.getStdOut().writer();
         try stdout.print("ZIG_VERIFY_DEBUG: Starting deserialization\n", .{});
 
         // Deserialize public key
@@ -108,44 +111,14 @@ pub fn main() !void {
         try stdout.print("ZIG_VERIFY_DEBUG: path_nodes_len={} rho_len={} hashes_len={}\n", .{ path.getNodes().len, rho_dbg.len, hashes.len });
 
         // Verify the signature
-        var is_valid = try scheme.verify(&public_key, epoch, message_bytes, signature);
+        const is_valid = try scheme.verify(&public_key, epoch, message_bytes, signature);
         try stdout.print("ZIG_VERIFY_DEBUG: verification result: {}\n", .{is_valid});
 
-        if (!is_valid) {
-            // Attempt alternate path order: reverse path.nodes and re-verify
-            var parsed = std.json.parseFromSlice(std.json.Value, allocator, signature_json, .{}) catch null;
-            if (parsed) |*doc| {
-                defer doc.deinit();
-                if (doc.value == .object) {
-                    if (doc.value.object.get("path")) |p| {
-                        if (p == .object) {
-                            if (p.object.get("nodes")) |nodes_val| {
-                                if (nodes_val == .array) {
-                                    std.mem.reverse(std.json.Value, nodes_val.array.items);
-                                    const alt_str = std.json.stringifyAlloc(allocator, doc.value, .{}) catch null;
-                                    if (alt_str) |alt_json| {
-                                        defer allocator.free(alt_json);
-                                        const alt_sig = hash_zig.serialization.deserializeSignature(allocator, alt_json) catch null;
-                                        if (alt_sig) |sig2| {
-                                            defer sig2.deinit();
-                                            const alt_ok = try scheme.verify(&public_key, epoch, message_bytes, sig2);
-                                            if (alt_ok) {
-                                                is_valid = true;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        // NOTE: Alternate path order verification disabled for Zig 0.15 compatibility
+        // (std.json.stringifyAlloc was removed in 0.15)
 
-        const stdout_final = std.io.getStdOut().writer();
-        try stdout_final.print("VERIFY_RESULT:{}\n", .{is_valid});
+        try stdout.print("VERIFY_RESULT:{}\n", .{is_valid});
     } else {
-        const stdout_err = std.io.getStdOut().writer();
-        try stdout_err.print("VERIFY_RESULT:false (signature_data doesn't start with SIGNATURE:)\n", .{});
+        try stdout.print("VERIFY_RESULT:false (signature_data doesn't start with SIGNATURE:)\n", .{});
     }
 }

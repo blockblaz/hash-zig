@@ -79,60 +79,78 @@ pub fn build(b: *std.Build) void {
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
 
     // Performance tests
-    const performance_tests = b.addTest(.{
+    const performance_test_module = b.createModule(.{
         .root_source_file = b.path("investigations/test/performance_test.zig"),
         .target = target,
         .optimize = optimize,
     });
-    performance_tests.root_module.addImport("hash-zig", hash_zig_module);
+    performance_test_module.addImport("hash-zig", hash_zig_module);
+    const performance_tests = b.addTest(.{
+        .root_module = performance_test_module,
+    });
     const run_performance_tests = b.addRunArtifact(performance_tests);
 
     // Rust compatibility tests
-    const rust_compat_tests = b.addTest(.{
+    const rust_compat_test_module = b.createModule(.{
         .root_source_file = b.path("investigations/test/rust_compatibility_test.zig"),
         .target = target,
         .optimize = optimize,
     });
-    rust_compat_tests.root_module.addImport("hash-zig", hash_zig_module);
+    rust_compat_test_module.addImport("hash-zig", hash_zig_module);
+    const rust_compat_tests = b.addTest(.{
+        .root_module = rust_compat_test_module,
+    });
     const run_rust_compat_tests = b.addRunArtifact(rust_compat_tests);
 
     // Comprehensive Rust compatibility tests
-    const comprehensive_rust_compat_tests = b.addTest(.{
+    const comprehensive_rust_compat_test_module = b.createModule(.{
         .root_source_file = b.path("investigations/test/comprehensive_rust_compatibility_test.zig"),
         .target = target,
         .optimize = optimize,
     });
-    comprehensive_rust_compat_tests.root_module.addImport("hash-zig", hash_zig_module);
+    comprehensive_rust_compat_test_module.addImport("hash-zig", hash_zig_module);
+    const comprehensive_rust_compat_tests = b.addTest(.{
+        .root_module = comprehensive_rust_compat_test_module,
+    });
     const run_comprehensive_rust_compat_tests = b.addRunArtifact(comprehensive_rust_compat_tests);
 
     // Encoding variants tests
-    const encoding_variants_tests = b.addTest(.{
+    const encoding_variants_test_module = b.createModule(.{
         .root_source_file = b.path("investigations/test/encoding_variants_test.zig"),
         .target = target,
         .optimize = optimize,
     });
-    encoding_variants_tests.root_module.addImport("hash-zig", hash_zig_module);
+    encoding_variants_test_module.addImport("hash-zig", hash_zig_module);
+    const encoding_variants_tests = b.addTest(.{
+        .root_module = encoding_variants_test_module,
+    });
     const run_encoding_variants_tests = b.addRunArtifact(encoding_variants_tests);
 
     // Performance benchmark tests
-    const performance_benchmark_tests = b.addTest(.{
+    const performance_benchmark_test_module = b.createModule(.{
         .root_source_file = b.path("investigations/test/performance_benchmark_test.zig"),
         .target = target,
         .optimize = optimize,
     });
-    performance_benchmark_tests.root_module.addImport("hash-zig", hash_zig_module);
+    performance_benchmark_test_module.addImport("hash-zig", hash_zig_module);
+    const performance_benchmark_tests = b.addTest(.{
+        .root_module = performance_benchmark_test_module,
+    });
     const run_performance_benchmark_tests = b.addRunArtifact(performance_benchmark_tests);
 
     // Lifetime tests (2^8 and 2^18) - always use ReleaseFast for key generation
     const lifetime_tests_options = b.addOptions();
     lifetime_tests_options.addOption(bool, "enable_lifetime_2_32", enable_lifetime_2_32);
-    const lifetime_tests = b.addTest(.{
+    const lifetime_test_module = b.createModule(.{
         .root_source_file = b.path("scripts/test_lifetimes.zig"),
         .target = target,
         .optimize = .ReleaseFast,
     });
-    lifetime_tests.root_module.addImport("hash-zig", hash_zig_module);
-    lifetime_tests.root_module.addOptions("build_options", lifetime_tests_options);
+    lifetime_test_module.addImport("hash-zig", hash_zig_module);
+    lifetime_test_module.addOptions("build_options", lifetime_tests_options);
+    const lifetime_tests = b.addTest(.{
+        .root_module = lifetime_test_module,
+    });
     const run_lifetime_tests = b.addRunArtifact(lifetime_tests);
 
     // Test step runs all tests
@@ -222,7 +240,7 @@ pub fn build(b: *std.Build) void {
     });
     if (enable_sanitize) {
         // Enable AddressSanitizer
-        cross_lang_zig_tool_exe.root_module.sanitize_c = true;
+        cross_lang_zig_tool_exe.root_module.sanitize_c = .full;
         // On Linux, we might need to link asan, but on macOS it's built-in
         if (target.result.os.tag == .linux) {
             cross_lang_zig_tool_exe.linkSystemLibrary("asan");

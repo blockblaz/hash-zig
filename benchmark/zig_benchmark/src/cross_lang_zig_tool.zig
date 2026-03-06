@@ -155,7 +155,7 @@ fn keygenCommand(allocator: Allocator, seed_hex: ?[]const u8, lifetime: KeyLifet
         // Generate random seed
         try std.posix.getrandom(&seed);
         // Convert generated seed to hex string so we can persist it
-        const seed_hex_alloc = try std.fmt.allocPrint(allocator, "{x:0>64}", .{std.fmt.fmtSliceHexLower(&seed)});
+        const seed_hex_alloc = try std.fmt.allocPrint(allocator, "{x:0>64}", .{seed});
         defer allocator.free(seed_hex_alloc);
         seed_str = seed_hex_alloc;
     }

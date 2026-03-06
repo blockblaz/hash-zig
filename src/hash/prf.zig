@@ -1,1 +1,2 @@
-pub usingnamespace @import("../prf/prf.zig");
+const prf = @import("../prf/prf.zig");
+pub const ShakePRF = prf.ShakePRF;

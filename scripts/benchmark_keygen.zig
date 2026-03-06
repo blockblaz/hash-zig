@@ -52,17 +52,17 @@ pub fn main() !void {
     log.print("\n", .{});
 
     // Benchmark configurations - test different lifetimes but only generate 256 keys each
-    var benchmarks = std.ArrayList(BenchmarkConfig).init(allocator);
-    defer benchmarks.deinit();
+    var benchmarks: std.ArrayList(BenchmarkConfig) = .{};
+    defer benchmarks.deinit(allocator);
 
-    try benchmarks.append(.{
+    try benchmarks.append(allocator, .{
         .name = "2^8",
         .lifetime = .lifetime_2_8,
         .epochs = 256,
         .description = "Short-term keys (256 signatures max)",
     });
 
-    try benchmarks.append(.{
+    try benchmarks.append(allocator, .{
         .name = "2^18",
         .lifetime = .lifetime_2_18,
         .epochs = 256,
@@ -73,7 +73,7 @@ pub fn main() !void {
         log.print("⚠️  Warning: 2^32 lifetime test will take longer due to larger tree structures!\n", .{});
         log.print("   This is recommended only for comprehensive benchmarking.\n\n", .{});
 
-        try benchmarks.append(.{
+        try benchmarks.append(allocator, .{
             .name = "2^32",
             .lifetime = .lifetime_2_32,
             .epochs = 256,
@@ -103,8 +103,8 @@ fn runBenchmark(allocator: std.mem.Allocator, config: BenchmarkConfig, num_itera
     log.print("Description: {s}\n", .{config.description});
     log.print("{s}\n", .{"=" ** 60});
 
-    var times = std.ArrayList(f64).init(allocator);
-    defer times.deinit();
+    var times: std.ArrayList(f64) = .{};
+    defer times.deinit(allocator);
 
     for (0..num_iterations) |i| {
         log.print("Iteration {}/{}... ", .{ i + 1, num_iterations });
@@ -121,7 +121,7 @@ fn runBenchmark(allocator: std.mem.Allocator, config: BenchmarkConfig, num_itera
         const elapsed_s = @as(f64, @floatFromInt(elapsed_ns)) / 1_000_000_000.0;
 
         // Store timing
-        try times.append(elapsed_s);
+        try times.append(allocator, elapsed_s);
 
         // Clean up
         keypair.secret_key.deinit();

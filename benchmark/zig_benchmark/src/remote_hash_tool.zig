@@ -28,36 +28,36 @@ fn parseLifetimeTag(tag: []const u8) LifetimeError!hash_zig.KeyLifetimeRustCompa
     return LifetimeError.UnsupportedLifetime;
 }
 
-fn writeLength(writer: anytype, value: usize) !void {
+fn writeLength(writer: *std.Io.Writer, value: usize) !void {
     try writer.writeInt(u64, @as(u64, value), .little);
 }
 
-fn readLength(reader: anytype) !usize {
-    const raw = try reader.readInt(u64, .little);
+fn readLength(reader: *std.Io.Reader) !usize {
+    const raw = try reader.takeInt(u64, .little);
     if (raw > std.math.maxInt(usize)) return BincodeError.LengthOverflow;
     return @intCast(raw);
 }
 
-fn writeFieldElement(writer: anytype, value: FieldElement) !void {
+fn writeFieldElement(writer: *std.Io.Writer, value: FieldElement) !void {
     // Write Montgomery form directly (matching internal representation)
     // Both libraries use Montgomery internally, so wrappers should use Montgomery too
     try writer.writeInt(u32, value.toMontgomery(), .little);
 }
 
-fn readFieldElement(reader: anytype) !FieldElement {
+fn readFieldElement(reader: *std.Io.Reader) !FieldElement {
     // Read Montgomery form directly (matching internal representation)
     // Both libraries use Montgomery internally, so wrappers should use Montgomery too
-    const mont = try reader.readInt(u32, .little);
+    const mont = try reader.takeInt(u32, .little);
     return FieldElement.fromMontgomery(mont);
 }
 
-fn writeDomain(writer: anytype, domain: [8]FieldElement, active_len: usize) !void {
+fn writeDomain(writer: *std.Io.Writer, domain: [8]FieldElement, active_len: usize) !void {
     for (domain[0..active_len]) |fe| {
         try writeFieldElement(writer, fe);
     }
 }
 
-fn readDomain(reader: anytype, active_len: usize) ![8]FieldElement {
+fn readDomain(reader: *std.Io.Reader, active_len: usize) ![8]FieldElement {
     var domain: [8]FieldElement = .{ FieldElement.zero(), FieldElement.zero(), FieldElement.zero(), FieldElement.zero(), FieldElement.zero(), FieldElement.zero(), FieldElement.zero(), FieldElement.zero() };
     for (0..active_len) |i| {
         domain[i] = try readFieldElement(reader);
@@ -65,7 +65,7 @@ fn readDomain(reader: anytype, active_len: usize) ![8]FieldElement {
     return domain;
 }
 
-fn printUsage(writer: anytype) !void {
+fn printUsage(writer: *std.Io.Writer) !void {
     try writer.print(
         \\Usage:
         \\  zig-remote-hash-tool sign <message> <pk_json_out> <sig_bin_out> [seed_hex] [epoch] [num_active_epochs] [start_epoch] [lifetime]
@@ -148,7 +148,9 @@ pub fn writeSignatureBincode(path: []const u8, signature: *const hash_zig.Genera
     var file = try std.fs.cwd().createFile(path, .{ .truncate = true });
     defer file.close();
 
-    const writer = file.writer();
+    var write_buf: [4096]u8 = undefined;
+    var file_writer = file.writer(&write_buf);
+    const writer = &file_writer.interface;
     const path_nodes = signature.getPath().getNodes();
 
     // Write path_len (u64) - Vec length
@@ -169,7 +171,9 @@ pub fn writeSignatureBincode(path: []const u8, signature: *const hash_zig.Genera
     const rho = signature.getRho();
     if (rand_len > rho.len) return BincodeError.InvalidRandLength;
     // Debug: print rho values as written to file (for cross-language debugging)
-    const stderr = std.io.getStdErr().writer();
+    var stderr_buf: [4096]u8 = undefined;
+    var stderr_file = std.fs.File.stderr().writer(&stderr_buf);
+    const stderr = &stderr_file.interface;
     stderr.print("ZIG_WRITE_DEBUG: Writing rho to file (Canonical): ", .{}) catch {};
     for (rho[0..rand_len]) |fe| {
         const canonical = fe.toCanonical();
@@ -177,6 +181,7 @@ pub fn writeSignatureBincode(path: []const u8, signature: *const hash_zig.Genera
         stderr.print("0x{x:0>8} ", .{canonical}) catch {};
     }
     stderr.print("\n", .{}) catch {};
+    stderr.flush() catch {};
 
     // Write hashes_len (u64) - Vec length
     const hashes = signature.getHashes();
@@ -191,6 +196,7 @@ pub fn writeSignatureBincode(path: []const u8, signature: *const hash_zig.Genera
             try writer.writeInt(u32, fe.toCanonical(), .little);
         }
     }
+    try writer.flush();
 }
 
 /// Read signature from Rust bincode format (matching Rust's bincode::deserialize)
@@ -209,7 +215,9 @@ pub fn readSignatureBincode(path: []const u8, allocator: std.mem.Allocator, rand
     var file = try std.fs.cwd().openFile(path, .{});
     defer file.close();
 
-    const reader = file.reader();
+    var read_buf: [4096]u8 = undefined;
+    var file_reader = file.reader(&read_buf);
+    const reader = &file_reader.interface;
 
     // Read path_len (u64) - Vec length
     const path_len = try readLength(reader);
@@ -227,7 +235,7 @@ pub fn readSignatureBincode(path: []const u8, allocator: std.mem.Allocator, rand
         // Read array elements in canonical form (fixed-size array, no length prefix)
         // Read exactly hash_len elements (matching Rust's FieldArray<HASH_LEN>)
         for (0..hash_len) |j| {
-            const canonical = try reader.readInt(u32, .little);
+            const canonical = try reader.takeInt(u32, .little);
             path_nodes[i][j] = FieldElement.fromCanonical(canonical);
         }
         // Pad remaining with zeros if hash_len < 8
@@ -250,14 +258,17 @@ pub fn readSignatureBincode(path: []const u8, allocator: std.mem.Allocator, rand
     }
     var rho = [_]FieldElement{FieldElement.zero()} ** 7;
     // Debug: print rho values as read from file (for cross-language debugging)
-    const stderr = std.io.getStdErr().writer();
+    var stderr_buf2: [4096]u8 = undefined;
+    var stderr_file2 = std.fs.File.stderr().writer(&stderr_buf2);
+    const stderr = &stderr_file2.interface;
     stderr.print("ZIG_READ_DEBUG: Reading rho from file (Canonical, rand_len={}): ", .{rand_len}) catch {};
     for (0..rand_len) |i| {
-        const canonical = try reader.readInt(u32, .little);
+        const canonical = try reader.takeInt(u32, .little);
         rho[i] = FieldElement.fromCanonical(canonical);
         stderr.print("0x{x:0>8} ", .{canonical}) catch {};
     }
     stderr.print("\n", .{}) catch {};
+    stderr.flush() catch {};
 
     // Read hashes_len (u64) - Vec length
     const hashes_len = try readLength(reader);
@@ -278,7 +289,7 @@ pub fn readSignatureBincode(path: []const u8, allocator: std.mem.Allocator, rand
         // Read array elements in canonical form (fixed-size array, no length prefix)
         // Read exactly hash_len elements (matching Rust's FieldArray<HASH_LEN>)
         for (0..hash_len) |j| {
-            const canonical = try reader.readInt(u32, .little);
+            const canonical = try reader.takeInt(u32, .little);
             hashes_tmp[i][j] = FieldElement.fromCanonical(canonical);
         }
         // Pad remaining with zeros if hash_len < 8
@@ -408,11 +419,17 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
+    // Create stderr writer for usage messages
+    var stderr_buf: [4096]u8 = undefined;
+    var stderr_file = std.fs.File.stderr().writer(&stderr_buf);
+    const stderr = &stderr_file.interface;
+
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
 
     if (args.len < 2) {
-        try printUsage(std.io.getStdErr().writer());
+        try printUsage(stderr);
+        stderr.flush() catch {};
         std.process.exit(1);
     }
 
@@ -422,14 +439,16 @@ pub fn main() !void {
     else if (std.mem.eql(u8, cmd_str, "verify"))
         Command.verify
     else {
-        try printUsage(std.io.getStdErr().writer());
+        try printUsage(stderr);
+        stderr.flush() catch {};
         std.process.exit(1);
     };
 
     switch (command) {
         .sign => {
             if (args.len < 5) {
-                try printUsage(std.io.getStdErr().writer());
+                try printUsage(stderr);
+                stderr.flush() catch {};
                 std.process.exit(1);
             }
             const message = args[2];
@@ -451,7 +470,8 @@ pub fn main() !void {
         },
         .verify => {
             if (args.len < 5) {
-                try printUsage(std.io.getStdErr().writer());
+                try printUsage(stderr);
+                stderr.flush() catch {};
                 std.process.exit(1);
             }
             const message = args[2];

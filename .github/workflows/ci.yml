@@ -27,27 +27,10 @@ jobs:
       - name: Setup Zig
         uses: goto-bus-stop/setup-zig@v2
         with:
-          version: 0.14.1
+          version: 0.15.2
       
       - name: Verify Zig installation
         run: zig version
-      
-      - name: Clear Zig cache and regenerate dependency hash
-        shell: bash
-        run: |
-          echo "Clearing Zig cache and regenerating dependency hash..."
-          # Clear all possible cache locations
-          rm -rf ~/.cache/zig || true
-          rm -rf .zig-cache || true
-          rm -rf /tmp/zig-* || true
-          # Create a clean build.zig.zon without zig_poseidon dependency
-          cp build.zig.zon build.zig.zon.backup
-          awk '/zig_poseidon/{flag=1} flag && /}/ {flag=0; next} !flag' build.zig.zon > build.zig.zon.tmp && mv build.zig.zon.tmp build.zig.zon
-          # Add dependency back with fresh fetch
-          zig fetch --save=zig_poseidon https://github.com/blockblaz/zig-poseidon/archive/main.tar.gz
-          # Verify the dependency was fetched
-          ls -la ~/.cache/zig/p/ || echo "No cache directory found"
-          echo "Dependencies fetched successfully with fresh hash"
       
       - name: Run lint (zig fmt --check)
         run: zig build lint
@@ -92,7 +75,7 @@ jobs:
       - name: Setup Zig
         uses: goto-bus-stop/setup-zig@v2
         with:
-          version: 0.14.1
+          version: 0.15.2
       
       - name: Verify Zig installation
         run: zig version
@@ -104,20 +87,6 @@ jobs:
           # This matches rust-toolchain.toml in benchmark/rust_benchmark/
           toolchain: nightly
           components: clippy, rustfmt
-      
-      - name: Clear Zig cache and fetch dependencies
-        shell: bash
-        run: |
-          echo "Clearing Zig cache and fetching dependencies..."
-          # Clear all possible cache locations
-          rm -rf ~/.cache/zig || true
-          rm -rf .zig-cache || true
-          rm -rf /tmp/zig-* || true
-          # Force fetch with explicit name
-          zig fetch --save=zig_poseidon https://github.com/blockblaz/zig-poseidon/archive/main.tar.gz
-          # Verify the dependency was fetched
-          ls -la ~/.cache/zig/p/ || echo "No cache directory found"
-          echo "Dependencies fetched successfully"
       
       - name: Build library
         run: zig build install -Doptimize=ReleaseFast -Ddebug-logs=false
@@ -152,24 +121,7 @@ jobs:
       - name: Setup Zig
         uses: goto-bus-stop/setup-zig@v2
         with:
-          version: 0.14.1
-      
-      - name: Clear Zig cache and regenerate dependency hash
-        shell: bash
-        run: |
-          echo "Clearing Zig cache and regenerating dependency hash..."
-          # Clear all possible cache locations
-          rm -rf ~/.cache/zig || true
-          rm -rf .zig-cache || true
-          rm -rf /tmp/zig-* || true
-          # Create a clean build.zig.zon without zig_poseidon dependency
-          cp build.zig.zon build.zig.zon.backup
-          awk '/zig_poseidon/{flag=1} flag && /}/ {flag=0; next} !flag' build.zig.zon > build.zig.zon.tmp && mv build.zig.zon.tmp build.zig.zon
-          # Add dependency back with fresh fetch
-          zig fetch --save=zig_poseidon https://github.com/blockblaz/zig-poseidon/archive/main.tar.gz
-          # Verify the dependency was fetched
-          ls -la ~/.cache/zig/p/ || echo "No cache directory found"
-          echo "Dependencies fetched successfully with fresh hash"
+          version: 0.15.2
       
       - name: Build library (verify cross-platform compilation)
         run: zig build
@@ -187,24 +139,7 @@ jobs:
       - name: Setup Zig
         uses: goto-bus-stop/setup-zig@v2
         with:
-          version: 0.14.1
-      
-      - name: Clear Zig cache and regenerate dependency hash
-        shell: bash
-        run: |
-          echo "Clearing Zig cache and regenerating dependency hash..."
-          # Clear all possible cache locations
-          rm -rf ~/.cache/zig || true
-          rm -rf .zig-cache || true
-          rm -rf /tmp/zig-* || true
-          # Create a clean build.zig.zon without zig_poseidon dependency
-          cp build.zig.zon build.zig.zon.backup
-          awk '/zig_poseidon/{flag=1} flag && /}/ {flag=0; next} !flag' build.zig.zon > build.zig.zon.tmp && mv build.zig.zon.tmp build.zig.zon
-          # Add dependency back with fresh fetch
-          zig fetch --save=zig_poseidon https://github.com/blockblaz/zig-poseidon/archive/main.tar.gz
-          # Verify the dependency was fetched
-          ls -la ~/.cache/zig/p/ || echo "No cache directory found"
-          echo "Dependencies fetched successfully with fresh hash"
+          version: 0.15.2
       
       - name: Build library
         run: zig build

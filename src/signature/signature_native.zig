@@ -1,1 +1,12 @@
-pub usingnamespace @import("native/scheme.zig");
+const scheme = @import("native/scheme.zig");
+pub const LifetimeParams = scheme.LifetimeParams;
+pub const LIFETIME_2_8_PARAMS = scheme.LIFETIME_2_8_PARAMS;
+pub const LIFETIME_2_18_PARAMS = scheme.LIFETIME_2_18_PARAMS;
+pub const LIFETIME_2_32_HASHING_PARAMS = scheme.LIFETIME_2_32_HASHING_PARAMS;
+pub const PaddedLayer = scheme.PaddedLayer;
+pub const HashSubTree = scheme.HashSubTree;
+pub const HashTreeOpening = scheme.HashTreeOpening;
+pub const GeneralizedXMSSSignature = scheme.GeneralizedXMSSSignature;
+pub const GeneralizedXMSSPublicKey = scheme.GeneralizedXMSSPublicKey;
+pub const GeneralizedXMSSSecretKey = scheme.GeneralizedXMSSSecretKey;
+pub const GeneralizedXMSSSignatureScheme = scheme.GeneralizedXMSSSignatureScheme;

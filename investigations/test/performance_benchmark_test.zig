@@ -171,21 +171,21 @@ fn runPerformanceBenchmarks(allocator: std.mem.Allocator) !void {
         .{ .lifetime = .lifetime_2_8, .keygen_iterations = 1, .sign_iterations = 100, .verify_iterations = 1000 },
     };
 
-    var results = std.ArrayList(BenchmarkResult).init(allocator);
-    defer results.deinit();
+    var results: std.ArrayList(BenchmarkResult) = .{};
+    defer results.deinit(allocator);
 
     for (benchmark_configs) |config| {
         // Benchmark key generation
         const keygen_result = try benchmarkKeyGeneration(allocator, config.lifetime, config.keygen_iterations);
-        try results.append(keygen_result);
+        try results.append(allocator, keygen_result);
 
         // Benchmark signing
         const sign_result = try benchmarkSigning(allocator, config.lifetime, config.sign_iterations);
-        try results.append(sign_result);
+        try results.append(allocator, sign_result);
 
         // Benchmark verification
         const verify_result = try benchmarkVerification(allocator, config.lifetime, config.verify_iterations);
-        try results.append(verify_result);
+        try results.append(allocator, verify_result);
     }
 
     // Print benchmark results

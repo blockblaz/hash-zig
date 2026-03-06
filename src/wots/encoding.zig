@@ -1,1 +1,2 @@
-pub usingnamespace @import("../encoding/encoding.zig");
+const encoding = @import("../encoding/encoding.zig");
+pub const IncomparableEncoding = encoding.IncomparableEncoding;

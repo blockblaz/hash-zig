@@ -1,1 +1,2 @@
-pub usingnamespace @import("../wots/winternitz.zig");
+const winternitz = @import("../wots/winternitz.zig");
+pub const WinternitzOTS = winternitz.WinternitzOTS;

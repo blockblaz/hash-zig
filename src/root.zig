@@ -36,6 +36,7 @@ pub const PoseidonTweak = hash.PoseidonTweak;
 // Primary hash implementations
 pub const Poseidon2 = hash.Poseidon2;
 pub const Poseidon2RustCompat = hash.Poseidon2RustCompat;
+pub const Poseidon2SIMD = @import("hash/poseidon2_hash_simd.zig");
 pub const Sha3 = hash.Sha3;
 pub const ShakePRF = prf.ShakePRF;
 pub const IncomparableEncoding = encoding.IncomparableEncoding;

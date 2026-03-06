@@ -6,6 +6,11 @@ const json = std.json;
 
 const SeedParseError = error{InvalidSeedHex};
 
+/// Helper function to stringify JSON value to allocated string (replaces removed json.stringifyAlloc)
+fn jsonStringifyAlloc(allocator: std.mem.Allocator, value: json.Value) ![]u8 {
+    return json.Stringify.valueAlloc(allocator, value, .{});
+}
+
 fn valueIsZero(val: json.Value) bool {
     return switch (val) {
         .string => blk: {
@@ -67,7 +72,7 @@ fn trimSignatureJson(
         }
     }
 
-    return json.stringifyAlloc(allocator, doc.value, .{});
+    return jsonStringifyAlloc(allocator, doc.value);
 }
 
 fn trimPublicKeyJson(
@@ -87,7 +92,7 @@ fn trimPublicKeyJson(
         }
     }
 
-    return json.stringifyAlloc(allocator, doc.value, .{});
+    return jsonStringifyAlloc(allocator, doc.value);
 }
 
 fn parseLifetimeTag(raw: []const u8) hash_zig.KeyLifetimeRustCompat {

@@ -88,19 +88,19 @@ fn parseFieldElementFromJsonValue(val: std.json.Value) !FieldElement {
 
 /// Serialize a FieldElement array to JSON array of decimal numbers
 pub fn serializeFieldElementArray(allocator: Allocator, elements: []const FieldElement) ![]u8 {
-    var result = std.ArrayList(u8).init(allocator);
-    defer result.deinit();
+    var result: std.ArrayList(u8) = .{};
+    defer result.deinit(allocator);
 
-    try result.append('[');
+    try result.append(allocator, '[');
     for (elements, 0..) |elem, i| {
-        if (i > 0) try result.append(',');
+        if (i > 0) try result.append(allocator, ',');
         const value_str = try serializeFieldElement(allocator, elem);
         defer allocator.free(value_str);
-        try result.appendSlice(value_str);
+        try result.appendSlice(allocator, value_str);
     }
-    try result.append(']');
+    try result.append(allocator, ']');
 
-    return result.toOwnedSlice();
+    return result.toOwnedSlice(allocator);
 }
 
 /// Deserialize a FieldElement array from JSON array of hex strings
@@ -125,80 +125,80 @@ pub fn deserializeFieldElementArray(allocator: Allocator, json_str: []const u8) 
 
 /// Serialize a GeneralizedXMSSSignature to JSON
 pub fn serializeSignature(allocator: Allocator, signature: *const GeneralizedXMSSSignature) ![]u8 {
-    var result = std.ArrayList(u8).init(allocator);
-    defer result.deinit();
+    var result: std.ArrayList(u8) = .{};
+    defer result.deinit(allocator);
 
-    try result.appendSlice("{");
+    try result.appendSlice(allocator, "{");
 
     // Serialize hashes as array of 8-element arrays (domains) first to match Rust ordering
-    try result.appendSlice("\"hashes\":");
+    try result.appendSlice(allocator, "\"hashes\":");
     const hashes = signature.getHashes();
-    var hashes_str = std.ArrayList(u8).init(allocator);
-    defer hashes_str.deinit();
-    try hashes_str.append('[');
+    var hashes_str: std.ArrayList(u8) = .{};
+    defer hashes_str.deinit(allocator);
+    try hashes_str.append(allocator, '[');
     for (hashes, 0..) |domain, i| {
-        if (i > 0) try hashes_str.append(',');
-        try hashes_str.append('[');
+        if (i > 0) try hashes_str.append(allocator, ',');
+        try hashes_str.append(allocator, '[');
         for (domain, 0..) |fe, j| {
-            if (j > 0) try hashes_str.append(',');
+            if (j > 0) try hashes_str.append(allocator, ',');
             const value_str = try serializeFieldElement(allocator, fe);
             defer allocator.free(value_str);
-            try hashes_str.appendSlice(value_str);
+            try hashes_str.appendSlice(allocator, value_str);
         }
-        try hashes_str.append(']');
+        try hashes_str.append(allocator, ']');
     }
-    try hashes_str.append(']');
-    const hashes_slice = try hashes_str.toOwnedSlice();
+    try hashes_str.append(allocator, ']');
+    const hashes_slice = try hashes_str.toOwnedSlice(allocator);
     defer allocator.free(hashes_slice);
-    try result.appendSlice(hashes_slice);
+    try result.appendSlice(allocator, hashes_slice);
 
     // Serialize path using controlled access as array of 8-element arrays
     // Rust expects "co_path" field, but we serialize as "nodes" for Zig compatibility
     // For cross-language compatibility, we'll use "co_path" to match Rust
     const path = signature.getPath();
-    try result.appendSlice(",\"path\":{");
-    try result.appendSlice("\"co_path\":");
-    var nodes_str = std.ArrayList(u8).init(allocator);
-    defer nodes_str.deinit();
-    try nodes_str.append('[');
+    try result.appendSlice(allocator, ",\"path\":{");
+    try result.appendSlice(allocator, "\"co_path\":");
+    var nodes_str: std.ArrayList(u8) = .{};
+    defer nodes_str.deinit(allocator);
+    try nodes_str.append(allocator, '[');
     const nodes = path.getNodes();
     for (nodes, 0..) |node, i| {
-        if (i > 0) try nodes_str.append(',');
-        try nodes_str.append('[');
+        if (i > 0) try nodes_str.append(allocator, ',');
+        try nodes_str.append(allocator, '[');
         for (node, 0..) |fe, j| {
-            if (j > 0) try nodes_str.append(',');
+            if (j > 0) try nodes_str.append(allocator, ',');
             const value_str = try serializeFieldElement(allocator, fe);
             defer allocator.free(value_str);
-            try nodes_str.appendSlice(value_str);
+            try nodes_str.appendSlice(allocator, value_str);
         }
-        try nodes_str.append(']');
+        try nodes_str.append(allocator, ']');
     }
-    try nodes_str.append(']');
-    const nodes_slice = try nodes_str.toOwnedSlice();
+    try nodes_str.append(allocator, ']');
+    const nodes_slice = try nodes_str.toOwnedSlice(allocator);
     defer allocator.free(nodes_slice);
-    try result.appendSlice(nodes_slice);
-    try result.appendSlice("}");
+    try result.appendSlice(allocator, nodes_slice);
+    try result.appendSlice(allocator, "}");
 
     // Serialize rho using controlled access
-    try result.appendSlice(",\"rho\":");
+    try result.appendSlice(allocator, ",\"rho\":");
     const rho = signature.getRho();
-    var rho_json_builder = std.ArrayList(u8).init(allocator);
-    defer rho_json_builder.deinit();
-    try rho_json_builder.append('[');
+    var rho_json_builder: std.ArrayList(u8) = .{};
+    defer rho_json_builder.deinit(allocator);
+    try rho_json_builder.append(allocator, '[');
     for (&rho, 0..) |fe, i| {
-        if (i > 0) try rho_json_builder.append(',');
+        if (i > 0) try rho_json_builder.append(allocator, ',');
         const value_str = try serializeFieldElement(allocator, fe);
         defer allocator.free(value_str);
-        try rho_json_builder.appendSlice(value_str);
+        try rho_json_builder.appendSlice(allocator, value_str);
     }
-    try rho_json_builder.append(']');
-    const rho_json = try rho_json_builder.toOwnedSlice();
+    try rho_json_builder.append(allocator, ']');
+    const rho_json = try rho_json_builder.toOwnedSlice(allocator);
     defer allocator.free(rho_json);
-    try result.appendSlice(rho_json);
+    try result.appendSlice(allocator, rho_json);
 
-    try result.appendSlice("}");
+    try result.appendSlice(allocator, "}");
 
-    return result.toOwnedSlice();
+    return result.toOwnedSlice(allocator);
 }
 
 /// Deserialize a GeneralizedXMSSSignature from JSON
@@ -303,30 +303,30 @@ pub fn deserializeSignature(allocator: Allocator, json_str: []const u8) !*Genera
 /// Serialize a GeneralizedXMSSPublicKey to JSON
 /// Matches Rust format: {"root": [...], "parameter": [...]}
 pub fn serializePublicKey(allocator: Allocator, public_key: *const GeneralizedXMSSPublicKey) ![]u8 {
-    var result = std.ArrayList(u8).init(allocator);
-    defer result.deinit();
+    var result: std.ArrayList(u8) = .{};
+    defer result.deinit(allocator);
 
-    try result.appendSlice("{");
+    try result.appendSlice(allocator, "{");
 
     // Serialize root first to match Rust format
-    try result.appendSlice("\"root\":");
+    try result.appendSlice(allocator, "\"root\":");
     const root = public_key.getRoot();
     const active_len = public_key.getHashLenFe();
     const root_slice = root[0..active_len];
     const root_json = try serializeFieldElementArray(allocator, root_slice);
     defer allocator.free(root_json);
-    try result.appendSlice(root_json);
+    try result.appendSlice(allocator, root_json);
 
     // Serialize parameter second to match Rust format
-    try result.appendSlice(",\"parameter\":");
+    try result.appendSlice(allocator, ",\"parameter\":");
     const parameter = public_key.getParameter();
     const param_json = try serializeFieldElementArray(allocator, &parameter);
     defer allocator.free(param_json);
-    try result.appendSlice(param_json);
+    try result.appendSlice(allocator, param_json);
 
-    try result.appendSlice("}");
+    try result.appendSlice(allocator, "}");
 
-    return result.toOwnedSlice();
+    return result.toOwnedSlice(allocator);
 }
 
 /// Deserialize a GeneralizedXMSSPublicKey from JSON
@@ -377,41 +377,41 @@ pub fn deserializePublicKey(json_str: []const u8) !GeneralizedXMSSPublicKey {
 
 /// Serialize a secret key (simplified - just the essential data for testing)
 pub fn serializeSecretKey(allocator: Allocator, secret_key: *const GeneralizedXMSSSecretKey) ![]u8 {
-    var result = std.ArrayList(u8).init(allocator);
-    defer result.deinit();
+    var result: std.ArrayList(u8) = .{};
+    defer result.deinit(allocator);
 
-    try result.appendSlice("{");
+    try result.appendSlice(allocator, "{");
 
     // Serialize PRF key using controlled access
     const prf_key = secret_key.getPrfKey();
-    const prf_key_hex = try std.fmt.allocPrint(allocator, "\"0x{x:0>64}\"", .{std.fmt.fmtSliceHexLower(&prf_key)});
+    const prf_key_hex = try std.fmt.allocPrint(allocator, "\"0x{x:0>64}\"", .{prf_key});
     defer allocator.free(prf_key_hex);
-    try result.appendSlice("\"prf_key\":");
-    try result.appendSlice(prf_key_hex);
+    try result.appendSlice(allocator, "\"prf_key\":");
+    try result.appendSlice(allocator, prf_key_hex);
 
     // Serialize activation parameters using controlled access
-    try result.appendSlice(",\"activation_epoch\":");
+    try result.appendSlice(allocator, ",\"activation_epoch\":");
     const activation_epoch = secret_key.getActivationEpoch();
     const epoch_str = try std.fmt.allocPrint(allocator, "{}", .{activation_epoch});
     defer allocator.free(epoch_str);
-    try result.appendSlice(epoch_str);
+    try result.appendSlice(allocator, epoch_str);
 
-    try result.appendSlice(",\"num_active_epochs\":");
+    try result.appendSlice(allocator, ",\"num_active_epochs\":");
     const num_active_epochs = secret_key.getNumActiveEpochs();
     const epochs_str = try std.fmt.allocPrint(allocator, "{}", .{num_active_epochs});
     defer allocator.free(epochs_str);
-    try result.appendSlice(epochs_str);
+    try result.appendSlice(allocator, epochs_str);
 
     // Serialize parameter using controlled access
-    try result.appendSlice(",\"parameter\":");
+    try result.appendSlice(allocator, ",\"parameter\":");
     const parameter = secret_key.getParameter();
     const param_json = try serializeFieldElementArray(allocator, &parameter);
     defer allocator.free(param_json);
-    try result.appendSlice(param_json);
+    try result.appendSlice(allocator, param_json);
 
-    try result.appendSlice("}");
+    try result.appendSlice(allocator, "}");
 
-    return result.toOwnedSlice();
+    return result.toOwnedSlice(allocator);
 }
 
 /// Deserialize secret key data from JSON (returns a struct with the deserialized data)
